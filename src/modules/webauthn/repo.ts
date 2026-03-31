@@ -63,6 +63,24 @@ export function createChallenge(
   return getChallengeByRequestId(db, requestId) as WebauthnChallenge
 }
 
+export function consumeUnusedRegistrationChallengesForUser(
+  db: DatabaseClient,
+  userId: string,
+  now: string
+): number {
+  const result = db
+    .prepare(
+      [
+        'UPDATE webauthn_challenges',
+        'SET consumed_at = ?',
+        "WHERE type = 'register' AND user_id = ? AND consumed_at IS NULL"
+      ].join(' ')
+    )
+    .run(now, userId)
+
+  return result.changes
+}
+
 export function getChallengeByRequestId(
   db: DatabaseClient,
   requestId: string

@@ -99,6 +99,60 @@ describe('webauthn routes', () => {
     })
   })
 
+  it('second register/options invalidates the first unused request id', async () => {
+    const testApp = await createSignedInApp('replace-register@example.com')
+    openApps.push(testApp)
+    const stalePasskey = createTestPasskey('replace-register-stale')
+    const freshPasskey = createTestPasskey('replace-register-fresh')
+
+    const firstOptions = await getRegisterOptions(testApp)
+    const secondOptions = await getRegisterOptions(testApp)
+
+    const staleResponse = await testApp.app.request(
+      '/webauthn/register/verify',
+      {
+        method: 'POST',
+        headers: authHeaders(testApp.tokens.access_token),
+        body: json({
+          request_id: firstOptions.request_id,
+          credential: stalePasskey.createRegistrationCredential(
+            firstOptions.publicKey,
+            origin
+          )
+        })
+      }
+    )
+    const freshResponse = await testApp.app.request(
+      '/webauthn/register/verify',
+      {
+        method: 'POST',
+        headers: authHeaders(testApp.tokens.access_token),
+        body: json({
+          request_id: secondOptions.request_id,
+          credential: freshPasskey.createRegistrationCredential(
+            secondOptions.publicKey,
+            origin
+          )
+        })
+      }
+    )
+
+    const storedCredentials = testApp.db
+      .prepare(
+        'SELECT credential_id FROM webauthn_credentials WHERE user_id = ?'
+      )
+      .all(testApp.userId) as Array<{ credential_id: string }>
+
+    expect(staleResponse.status).toBe(400)
+    expect(await staleResponse.json()).toEqual({
+      error: 'invalid_webauthn_registration'
+    })
+    expect(freshResponse.status).toBe(200)
+    expect(storedCredentials).toEqual([
+      { credential_id: freshPasskey.credentialId }
+    ])
+  })
+
   it('authenticate/options returns independent request ids for concurrent requests', async () => {
     const testApp = await createTestApp()
     openApps.push(testApp)
@@ -282,6 +336,48 @@ describe('webauthn routes', () => {
     expect(firstVerify.status).toBe(200)
     expect(secondVerify.status).toBe(409)
     expect(await secondVerify.json()).toEqual({ error: 'duplicate_credential' })
+  })
+
+  it('register/verify rejects replayed request ids before adding side effects', async () => {
+    const testApp = await createSignedInApp('register-replay@example.com')
+    openApps.push(testApp)
+    const passkey = createTestPasskey('register-replay')
+
+    const options = await getRegisterOptions(testApp)
+    const credential = passkey.createRegistrationCredential(
+      options.publicKey,
+      origin
+    )
+
+    const firstResponse = await testApp.app.request(
+      '/webauthn/register/verify',
+      {
+        method: 'POST',
+        headers: authHeaders(testApp.tokens.access_token),
+        body: json({ request_id: options.request_id, credential })
+      }
+    )
+    const secondResponse = await testApp.app.request(
+      '/webauthn/register/verify',
+      {
+        method: 'POST',
+        headers: authHeaders(testApp.tokens.access_token),
+        body: json({ request_id: options.request_id, credential })
+      }
+    )
+
+    const storedCredentials = testApp.db
+      .prepare(
+        'SELECT credential_id FROM webauthn_credentials WHERE user_id = ?'
+      )
+      .all(testApp.userId) as Array<{ credential_id: string }>
+
+    expect(firstResponse.status).toBe(200)
+    expect(secondResponse.status).toBe(400)
+    expect(await secondResponse.json()).toEqual({
+      error: 'invalid_webauthn_registration'
+    })
+    expect(storedCredentials).toEqual([{ credential_id: passkey.credentialId }])
   })
 
   it('delete credential only succeeds for the owning user', async () => {

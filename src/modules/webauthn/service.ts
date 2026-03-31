@@ -12,6 +12,7 @@ import { TTLS } from '../../shared/time.js'
 import { mintSessionTokens } from '../session/service.js'
 import {
   consumeChallenge,
+  consumeUnusedRegistrationChallengesForUser,
   createChallenge,
   createCredential,
   deleteCredentialById,
@@ -102,6 +103,11 @@ export function generateRegistrationOptions(
   }
 } {
   const challenge = encodeBase64Url(randomBytes(32))
+  consumeUnusedRegistrationChallengesForUser(
+    db,
+    input.userId,
+    new Date().toISOString()
+  )
   const expiresAt = new Date(
     Date.now() + TTLS.webauthnChallengeSeconds * 1000
   ).toISOString()
@@ -158,6 +164,12 @@ export function verifyRegistration(
     input.origins
   )
 
+  const now = new Date().toISOString()
+
+  if (!consumeChallenge(db, challenge.requestId, now)) {
+    throw new InvalidWebauthnRegistrationError()
+  }
+
   try {
     createCredential(db, {
       userId: input.userId,
@@ -172,10 +184,6 @@ export function verifyRegistration(
     }
 
     throw error
-  }
-
-  if (!consumeChallenge(db, challenge.requestId, new Date().toISOString())) {
-    throw new InvalidWebauthnRegistrationError()
   }
 
   return { ok: true }

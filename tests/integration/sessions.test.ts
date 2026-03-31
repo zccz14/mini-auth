@@ -8,6 +8,10 @@ import { createDatabaseClient } from '../../src/infra/db/client.js'
 import { importSmtpConfigs } from '../../src/infra/smtp/config-import.js'
 import { runStartCommand } from '../../src/cli/start.js'
 import { hashValue } from '../../src/shared/crypto.js'
+import {
+  createSession,
+  revokeSessionByRefreshTokenHash
+} from '../../src/modules/session/repo.js'
 import { createTestApp } from '../helpers/app.js'
 import { createTempDbPath } from '../helpers/db.js'
 import {
@@ -95,6 +99,47 @@ describe('session routes', () => {
 
     expect(response.status).toBe(401)
     expect(await response.json()).toEqual({ error: 'invalid_refresh_token' })
+  })
+
+  it('refresh token claim only succeeds once across database clients', async () => {
+    const dbPath = await createTempDbPath()
+    await bootstrapDatabase(dbPath)
+    const writerDb = createDatabaseClient(dbPath)
+    const readerDb = createDatabaseClient(dbPath)
+
+    try {
+      writerDb
+        .prepare(
+          'INSERT INTO users (id, email, email_verified_at) VALUES (?, ?, ?)'
+        )
+        .run('user-1', 'user-1@example.com', '2030-01-01T00:00:00.000Z')
+
+      createSession(writerDb, {
+        userId: 'user-1',
+        refreshTokenHash: 'refresh-hash',
+        expiresAt: '2099-01-01T00:00:00.000Z'
+      })
+
+      const firstClaim = revokeSessionByRefreshTokenHash(
+        writerDb,
+        'refresh-hash',
+        '2030-01-01T00:00:00.000Z'
+      )
+      const secondClaim = revokeSessionByRefreshTokenHash(
+        readerDb,
+        'refresh-hash',
+        '2030-01-01T00:00:01.000Z'
+      )
+
+      expect(firstClaim).toMatchObject({
+        userId: 'user-1',
+        refreshTokenHash: 'refresh-hash'
+      })
+      expect(secondClaim).toBeNull()
+    } finally {
+      writerDb.close()
+      readerDb.close()
+    }
   })
 
   it('logout revokes the session referenced by sid', async () => {

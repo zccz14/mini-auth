@@ -8,8 +8,8 @@ import {
 import { generateOpaqueToken, hashValue } from '../../shared/crypto.js'
 import {
   createSession,
-  getSessionByRefreshTokenHash,
   revokeSessionById,
+  revokeSessionByRefreshTokenHash,
   type Session
 } from './repo.js'
 
@@ -61,16 +61,15 @@ export async function refreshSessionTokens(
   input: { refreshToken: string; issuer: string }
 ): Promise<TokenPair & { session: Session }> {
   const now = new Date().toISOString()
-  const session = getSessionByRefreshTokenHash(
+  const session = revokeSessionByRefreshTokenHash(
     db,
-    hashValue(input.refreshToken)
+    hashValue(input.refreshToken),
+    now
   )
 
-  if (!session || session.revokedAt || session.expiresAt <= now) {
+  if (!session) {
     throw new InvalidRefreshTokenError()
   }
-
-  revokeSessionById(db, session.id, now)
 
   return mintSessionTokens(db, {
     userId: session.userId,

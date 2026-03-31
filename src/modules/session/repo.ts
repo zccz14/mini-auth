@@ -70,6 +70,50 @@ export function revokeSessionById(
   ).run(now, id)
 }
 
+export function revokeSessionByRefreshTokenHash(
+  db: DatabaseClient,
+  refreshTokenHash: string,
+  now: string
+): Session | null {
+  const select = db.prepare(
+    [
+      'SELECT id, user_id, refresh_token_hash, expires_at, revoked_at, created_at',
+      'FROM sessions',
+      'WHERE refresh_token_hash = ? AND revoked_at IS NULL AND expires_at > ?',
+      'LIMIT 1'
+    ].join(' ')
+  )
+  const update = db.prepare(
+    [
+      'UPDATE sessions',
+      'SET revoked_at = ?',
+      'WHERE id = ? AND revoked_at IS NULL AND expires_at > ?'
+    ].join(' ')
+  )
+  const transaction = db.transaction(
+    (tokenHash: string, timestamp: string): Session | null => {
+      const row = select.get(tokenHash, timestamp) as SessionRow | undefined
+
+      if (!row) {
+        return null
+      }
+
+      const result = update.run(timestamp, row.id, timestamp)
+
+      if (result.changes === 0) {
+        return null
+      }
+
+      return mapSession({
+        ...row,
+        revoked_at: timestamp
+      })
+    }
+  )
+
+  return transaction(refreshTokenHash, now)
+}
+
 function mapSession(row: SessionRow): Session {
   return {
     id: row.id,
