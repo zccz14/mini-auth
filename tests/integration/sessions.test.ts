@@ -10,7 +10,11 @@ import { runStartCommand } from '../../src/cli/start.js'
 import { hashValue } from '../../src/shared/crypto.js'
 import { createTestApp } from '../helpers/app.js'
 import { createTempDbPath } from '../helpers/db.js'
-import { extractOtpCode, startMockSmtpServer } from '../helpers/mock-smtp.js'
+import {
+  extractOtpCode,
+  startConfigurableMockSmtpServer,
+  startMockSmtpServer
+} from '../helpers/mock-smtp.js'
 
 const json = (value: unknown) => JSON.stringify(value)
 
@@ -228,6 +232,63 @@ describe('session routes', () => {
     expect(await response.json()).toEqual({ ok: true })
     expect(smtpServer.mailbox).toHaveLength(1)
     expect(smtpServer.mailbox[0]?.to).toBe('runtime@example.com')
+
+    await server.close()
+    await smtpServer.close()
+  })
+
+  it('runtime smtp negative response returns 503 and invalidates the otp', async () => {
+    const smtpServer = await startConfigurableMockSmtpServer({
+      onRcptTo: ['550 mailbox unavailable']
+    })
+    const dbPath = await createTempDbPath()
+    const port = await getAvailablePort()
+
+    await bootstrapDatabase(dbPath)
+    const db = createDatabaseClient(dbPath)
+
+    await importSmtpConfigs(
+      db,
+      await writeRuntimeSmtpConfigJson({
+        host: '127.0.0.1',
+        port: smtpServer.port,
+        username: 'mailer',
+        password: 'secret',
+        from_email: 'noreply@example.com',
+        from_name: 'mini-auth'
+      })
+    )
+    db.close()
+
+    const server = await runStartCommand({
+      dbPath,
+      host: '127.0.0.1',
+      port,
+      issuer: 'https://issuer.example',
+      rpId: 'example.com',
+      origin: ['https://app.example.com']
+    })
+
+    const response = await fetch(`http://127.0.0.1:${port}/email/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: json({ email: 'runtime-failure@example.com' })
+    })
+
+    const verifyDb = createDatabaseClient(dbPath)
+    const otpRow = verifyDb
+      .prepare('SELECT consumed_at FROM email_otps WHERE email = ?')
+      .get('runtime-failure@example.com') as
+      | { consumed_at: string | null }
+      | undefined
+    verifyDb.close()
+
+    expect(response.status).toBe(503)
+    expect(await response.json()).toEqual({
+      error: 'smtp_temporarily_unavailable'
+    })
+    expect(otpRow?.consumed_at).toBeTruthy()
+    expect(smtpServer.mailbox).toHaveLength(0)
 
     await server.close()
     await smtpServer.close()

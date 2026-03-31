@@ -48,6 +48,22 @@ export async function startMockSmtpServer(): Promise<{
   mailbox: MockMail[]
   close(): Promise<void>
 }> {
+  return startConfigurableMockSmtpServer({})
+}
+
+export async function startConfigurableMockSmtpServer(options: {
+  onEhlo?: string[]
+  onAuth?: string[]
+  onMailFrom?: string[]
+  onRcptTo?: string[]
+  onData?: string[]
+  onQueued?: string[]
+  onQuit?: string[]
+}): Promise<{
+  port: number
+  mailbox: MockMail[]
+  close(): Promise<void>
+}> {
   const mailbox: MockMail[] = []
   const server = createServer((socket) => {
     let state: 'command' | 'data' = 'command'
@@ -72,7 +88,7 @@ export async function startMockSmtpServer(): Promise<{
             currentMail = {}
             dataLines = []
             state = 'command'
-            socket.write('250 queued\r\n')
+            writeResponses(socket, options.onQueued ?? ['250 queued'])
             continue
           }
 
@@ -81,35 +97,41 @@ export async function startMockSmtpServer(): Promise<{
         }
 
         if (line.startsWith('EHLO ') || line.startsWith('HELO ')) {
-          socket.write('250-mock-smtp\r\n250 AUTH PLAIN\r\n')
+          writeResponses(
+            socket,
+            options.onEhlo ?? ['250-mock-smtp', '250 AUTH PLAIN']
+          )
           continue
         }
 
         if (line.startsWith('AUTH PLAIN ')) {
-          socket.write('235 authenticated\r\n')
+          writeResponses(socket, options.onAuth ?? ['235 authenticated'])
           continue
         }
 
         if (line.startsWith('MAIL FROM:')) {
           currentMail.from = extractAddress(line)
-          socket.write('250 ok\r\n')
+          writeResponses(socket, options.onMailFrom ?? ['250 ok'])
           continue
         }
 
         if (line.startsWith('RCPT TO:')) {
           currentMail.to = extractAddress(line)
-          socket.write('250 ok\r\n')
+          writeResponses(socket, options.onRcptTo ?? ['250 ok'])
           continue
         }
 
         if (line === 'DATA') {
           state = 'data'
-          socket.write('354 end data with <CR><LF>.<CR><LF>\r\n')
+          writeResponses(
+            socket,
+            options.onData ?? ['354 end data with <CR><LF>.<CR><LF>']
+          )
           continue
         }
 
         if (line === 'QUIT') {
-          socket.write('221 bye\r\n')
+          writeResponses(socket, options.onQuit ?? ['221 bye'])
           socket.end()
           continue
         }
@@ -149,6 +171,13 @@ export async function startMockSmtpServer(): Promise<{
       })
     }
   }
+}
+
+function writeResponses(
+  socket: { write(value: string): void },
+  lines: string[]
+): void {
+  socket.write(`${lines.join('\r\n')}\r\n`)
 }
 
 function extractAddress(line: string): string {

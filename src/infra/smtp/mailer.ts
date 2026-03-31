@@ -129,21 +129,21 @@ export function createRuntimeSmtpTransport(): SmtpTransport {
       const socket = await connectSmtp(config)
 
       try {
-        await readReply(socket)
+        await expectReply(readReply(socket), [220], 'greeting')
         await sendCommand(socket, `EHLO ${getEhloName(config.host)}`)
-        await readMultilineReply(socket)
+        await expectReply(readMultilineReply(socket), [250], 'ehlo')
         await sendCommand(socket, `AUTH PLAIN ${encodeAuthPlain(config)}`)
-        await readReply(socket)
+        await expectReply(readReply(socket), [235], 'auth')
         await sendCommand(socket, `MAIL FROM:<${config.fromEmail}>`)
-        await readReply(socket)
+        await expectReply(readReply(socket), [250], 'mail_from')
         await sendCommand(socket, `RCPT TO:<${message.to}>`)
-        await readReply(socket)
+        await expectReply(readReply(socket), [250, 251], 'rcpt_to')
         await sendCommand(socket, 'DATA')
-        await readReply(socket)
+        await expectReply(readReply(socket), [354], 'data')
         await writeLine(socket, buildMessageData(message))
-        await readReply(socket)
+        await expectReply(readReply(socket), [250], 'queued')
         await sendCommand(socket, 'QUIT')
-        await readReply(socket)
+        await expectReply(readReply(socket), [221], 'quit')
       } finally {
         socket.end()
       }
@@ -217,6 +217,27 @@ async function readMultilineReply(
   return readSmtpLines(socket)
 }
 
+async function expectReply(
+  replyPromise: Promise<string | string[]>,
+  expectedCodes: number[],
+  stage: string
+): Promise<void> {
+  const reply = await replyPromise
+  const lines = Array.isArray(reply) ? reply : [reply]
+
+  if (lines.length === 0) {
+    throw new Error(`SMTP ${stage} returned no reply`)
+  }
+
+  for (const line of lines) {
+    const code = parseReplyCode(line)
+
+    if (!expectedCodes.includes(code)) {
+      throw new Error(`SMTP ${stage} failed with ${line}`)
+    }
+  }
+}
+
 async function readSmtpLines(
   socket: net.Socket | tls.TLSSocket
 ): Promise<string[]> {
@@ -260,6 +281,16 @@ function encodeAuthPlain(config: NormalizedSmtpConfig): string {
   return Buffer.from(
     `\u0000${config.username}\u0000${config.password}`
   ).toString('base64')
+}
+
+function parseReplyCode(line: string): number {
+  const match = line.match(/^(\d{3})[ -]/)
+
+  if (!match) {
+    throw new Error(`Invalid SMTP reply: ${line}`)
+  }
+
+  return Number(match[1])
 }
 
 function buildMessageData(message: MailMessage): string {
