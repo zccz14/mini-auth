@@ -1,13 +1,19 @@
 # mini-auth
 
-Minimal Authorization and Authentication Modules for Any App. Support Email, WebAuthn (Passkey) and JWT. Using Hono HTTP Server and SQLite Database.
+Minimal Authentication Modules for Any App. Supports Email login, WebAuthn (Passkey) and JWT-based authentication. Using Hono HTTP Server and SQLite Database.
 
 JWT is used for stateless authentication, allowing users to authenticate without maintaining server-side sessions. This makes it ideal for APIs and microservices.
 
 No need to use Supabase or Firebase for auth-only simple projects. Extremely easy to set up and use. Just run the server and start using the auth endpoints.
 
 ```bash
-npx mini-auth start
+# Initialize the database and initialize the SMTP and JWKS configurations.
+# This command will create a `mini-auth.sqlite` file in the current directory to store user data, sessions, and configurations.
+# SMTP Configuration is stored in the `smtp_config` table, and JWKS keys are stored in the `jwks_keys` table in the SQLite database.
+npx mini-auth create
+
+# Start the auth server from sqlite file. (mini-auth.sqlite)
+npx mini-auth start mini-auth.sqlite --port 7777
 # Auth server is running at http://localhost:7777
 # The Database is stored at ./mini-auth.sqlite
 ```
@@ -15,7 +21,7 @@ npx mini-auth start
 ## Features
 
 - Email-based sign-up and sign-in
-- WebAuthn (Passkey) support for password-less authentication
+- WebAuthn (PassKey) support for password-less authentication
 - JWT for stateless authentication
 - SQLite database for storing user data. Easy to set up, use, and backup.
 - Built with Hono HTTP Server for high performance and low latency.
@@ -26,11 +32,17 @@ npx mini-auth start
 
 Email is a widely used and familiar method for user authentication. It allows users to sign up and sign in using their email address, which is often more convenient than creating and remembering a separate username. Additionally, email-based authentication can be easily implemented with verification codes sent to the user's email, providing an extra layer of security. This method also allows for easy account recovery in case users forget their credentials, as they can simply request a new verification code to be sent to their email address.
 
-Compared to Web3 authentication methods, email-based authentication is more accessible to a wider audience, as it does not require users to have a cryptocurrency wallet or understand blockchain technology. It also provides a more traditional and familiar user experience, which can be beneficial for applications targeting a general audience. For most of the applications, email can provide an additional communication channel with users, allowing for sending notifications, updates, and other important information directly to their inbox. And the web3 authentication methods cannot change password if the private key is lost, but email-based authentication allows users to reset their password and regain access to their account.
+Compared to Web3 authentication methods, email-based authentication is more accessible to a wider audience, as it does not require users to have a cryptocurrency wallet or understand blockchain technology. It also provides a more traditional and familiar user experience, which can be beneficial for applications targeting a general audience. For most of the applications, email can provide an additional communication channel with users, allowing for sending notifications, updates, and other important information directly to their inbox. And the web3 authentication methods cannot change password if the private key is lost, but email allows users to regain access to their account.
 
 ### Why password-less authentication? (OTP and WebAuthn)
 
-Password-less authentication using WebAuthn (Passkey) provides a more secure and user-friendly authentication experience. It eliminates the need for users to remember complex passwords, which can be easily forgotten or compromised. With WebAuthn, users can authenticate using their device's built-in biometric sensors (e.g., fingerprint or facial recognition) or a hardware security key, providing a strong level of security against phishing attacks and credential stuffing. Additionally, WebAuthn credentials are unique to each user and device, making it difficult for attackers to reuse stolen credentials across different accounts or services. Overall, password-less authentication enhances security while improving the user experience by reducing friction during the sign-in process.
+Password is the most common method for authentication, but it has several drawbacks. Users often choose weak passwords or reuse passwords across multiple sites, which can lead to security vulnerabilities. Passwords can also be easily forgotten, leading to account lockouts and frustration for users.
+
+Password should be encrypted and stored securely in the database, but it can still be vulnerable to breaches and leaks. If a password is compromised, attackers can gain unauthorized access to user accounts and sensitive information.
+
+Email OTP (One-Time Password) provides a more secure alternative to traditional password-based authentication. It eliminates the need for users to remember complex passwords, which can be easily forgotten or compromised. With email OTP, users receive a unique code (e.g. 6-digits) in their email inbox that they can use to authenticate themselves. This method is resistant to phishing attacks and credential stuffing, as the OTP is only valid for a short period of time and cannot be reused.
+
+Password-less authentication also using WebAuthn (PassKey) provides a more secure and user-friendly authentication experience. It eliminates the need for users to remember complex passwords, which can be easily forgotten or compromised. With WebAuthn, users can authenticate using their device's built-in biometric sensors (e.g., fingerprint or facial recognition) or a hardware security key, providing a strong level of security against phishing attacks and credential stuffing. Additionally, WebAuthn credentials are unique to each user and device, making it difficult for attackers to reuse stolen credentials across different accounts or services. Overall, password-less authentication enhances security while improving the user experience by reducing friction during the sign-in process.
 
 ### Why SQLite?
 
@@ -61,17 +73,17 @@ Public endpoints:
 
 Sign-up and sign-in endpoints:
 
-- `POST /sign-email` - Sign up or sign in with email, server will send a verification email with a verification code.
-- `POST /verify-email` - Verify email with the verification code sent to the user's email. Once verified, the user will be created if not exists and associated with the email. And a session with refresh/access token pair will be returned for authentication.
+- `POST /email/start` - Sign up or sign in with email, server will send a verification email with a verification code.
+- `POST /email/verify` - Verify email with the verification code sent to the user's email. Once verified, the user will be created if not exists and associated with the email. And a session with refresh/access token pair will be returned for authentication.
 - `GET /me` - Get the authenticated user's profile. Requires a valid JWT token in the Authorization header. This endpoint will return the user's profile information, including `user_id` (UUID), associated `email` and WebAuthn credentials list and active sessions list.
-- `POST /session/refresh` - Refresh the JWT token using a valid refresh token. Requires a valid JWT token in the Authorization header.
+- `POST /session/refresh` - Refresh the JWT token using a valid refresh token. Requires a valid refresh token in the Authorization header. Returns a new access token and refresh token pair.
 
 WebAuthn (PassKey) endpoints:
 
 - `POST /webauthn/register/options` - Get the WebAuthn options for registration or authentication. Requires a valid JWT token in the Authorization header.
 - `POST /webauthn/register/verify` - Register a new WebAuthn credential for the authenticated user. Requires a valid JWT token in the Authorization header.
-- `POST /webauthn/login/options` - Get the WebAuthn options for authentication. Requires a valid JWT token in the Authorization header.
-- `POST /webauthn/login/verify` - Authenticate with a WebAuthn credential. Requires a valid JWT token in the Authorization header.
+- `POST /webauthn/login/options` - Get the WebAuthn options for authentication.
+- `POST /webauthn/login/verify` - Authenticate with a WebAuthn credential. Returns a session with refresh/access token pair if successful.
 
 ## Operations
 
@@ -83,6 +95,6 @@ npx mini-auth rotate-jwks
 
 This will generate a new set of JWKS keys and update the database. Existing JWT tokens signed with the old keys will become invalid, so users will need to sign in again to obtain new tokens.
 
-# License
+## License
 
 MIT License
