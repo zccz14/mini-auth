@@ -21,7 +21,7 @@ npx mini-auth start mini-auth.sqlite --port 7777
 ## Features
 
 - Email-based sign-up and sign-in
-- WebAuthn (PassKey) support for password-less authentication
+- WebAuthn (Passkey) support with discoverable credentials for password-less authentication
 - JWT for stateless authentication
 - SQLite database for storing user data. Easy to set up, use, and backup.
 - Built with Hono HTTP Server for high performance and low latency.
@@ -42,7 +42,17 @@ Password should be encrypted and stored securely in the database, but it can sti
 
 Email OTP (One-Time Password) provides a more secure alternative to traditional password-based authentication. It eliminates the need for users to remember complex passwords, which can be easily forgotten or compromised. With email OTP, users receive a unique code (e.g. 6-digits) in their email inbox that they can use to authenticate themselves. This method is resistant to phishing attacks and credential stuffing, as the OTP is only valid for a short period of time and cannot be reused.
 
-Password-less authentication also using WebAuthn (PassKey) provides a more secure and user-friendly authentication experience. It eliminates the need for users to remember complex passwords, which can be easily forgotten or compromised. With WebAuthn, users can authenticate using their device's built-in biometric sensors (e.g., fingerprint or facial recognition) or a hardware security key, providing a strong level of security against phishing attacks and credential stuffing. Additionally, WebAuthn credentials are unique to each user and device, making it difficult for attackers to reuse stolen credentials across different accounts or services. Overall, password-less authentication enhances security while improving the user experience by reducing friction during the sign-in process.
+Password-less authentication also using WebAuthn (Passkey) provides a more secure and user-friendly authentication experience. It eliminates the need for users to remember complex passwords, which can be easily forgotten or compromised. With WebAuthn, users can authenticate using their device's built-in biometric sensors (e.g., fingerprint or facial recognition) or a hardware security key, providing a strong level of security against phishing attacks and credential stuffing. Additionally, WebAuthn credentials are unique to each user and device, making it difficult for attackers to reuse stolen credentials across different accounts or services.
+
+mini-auth uses discoverable credentials for Passkey login. This means users first sign in with email, then register a Passkey while authenticated. After that, they can sign in with the Passkey directly without entering their email address first. During login, the server returns a WebAuthn challenge without requiring an email address, and the browser or operating system can show any locally available Passkeys for this site. The selected credential is then sent back to the server for verification, and mini-auth identifies the user from the credential ID.
+
+To support this flow, Passkey registration should create a discoverable credential (also known as a resident credential). This is required for username-less login. Non-discoverable WebAuthn credentials usually require the server to know the user first and provide an allow-list of credential IDs, which would require the user to enter an email address or username before authentication.
+
+For this reason, `POST /webauthn/authenticate/options` should not require an email address, username, or credential ID. The request body can be empty. The server only needs to generate a new challenge and return `PublicKeyCredentialRequestOptions` without `allowCredentials`. The browser will then ask the operating system or authenticator for any discoverable Passkeys that match the RP ID.
+
+`POST /webauthn/authenticate/verify` should receive the assertion returned by `navigator.credentials.get()` together with a server-issued request identifier such as `request_id`. The server can use `request_id` to load the latest unexpired challenge, verify the assertion, and then identify the user from the returned credential ID.
+
+Calling `POST /webauthn/authenticate/options` again should replace the previous unused login challenge. This means a new options request can be used as a refresh of the Passkey login ceremony, and a separate cancel endpoint is not required. The same challenge lifecycle can also be used for `POST /webauthn/register/options`.
 
 ### Why SQLite?
 
@@ -77,13 +87,22 @@ Sign-up and sign-in endpoints:
 - `POST /email/verify` - Verify email with the verification code sent to the user's email. Once verified, the user will be created if not exists and associated with the email. And a session with refresh/access token pair will be returned for authentication.
 - `GET /me` - Get the authenticated user's profile. Requires a valid JWT token in the Authorization header. This endpoint will return the user's profile information, including `user_id` (UUID), associated `email` and WebAuthn credentials list and active sessions list.
 - `POST /session/refresh` - Refresh the JWT token using a valid refresh token. Requires a valid refresh token in the Authorization header. Returns a new access token and refresh token pair.
+- `POST /session/logout` - Logout from the current session. Requires a valid JWT token in the Authorization header. This will invalidate the current refresh token, but the access token will still be valid until it expires.
 
-WebAuthn (PassKey) endpoints:
+WebAuthn (Passkey) endpoints:
 
-- `POST /webauthn/register/options` - Get the WebAuthn options for registration or authentication. Requires a valid JWT token in the Authorization header.
-- `POST /webauthn/register/verify` - Register a new WebAuthn credential for the authenticated user. Requires a valid JWT token in the Authorization header.
-- `POST /webauthn/login/options` - Get the WebAuthn options for authentication.
-- `POST /webauthn/login/verify` - Authenticate with a WebAuthn credential. Returns a session with refresh/access token pair if successful.
+- `POST /webauthn/register/options` - Get WebAuthn registration options for the authenticated user. Requires a valid JWT token in the Authorization header. The returned options should create a discoverable credential so the Passkey can later be used for username-less login.
+- `POST /webauthn/register/verify` - Verify and store a new WebAuthn credential for the authenticated user. Requires a valid JWT token in the Authorization header.
+- `POST /webauthn/authenticate/options` - Get a WebAuthn authentication challenge for username-less Passkey login. No email address is required at this step. The request body can be empty, and the returned options should not include `allowCredentials`.
+- `POST /webauthn/authenticate/verify` - Authenticate with a WebAuthn credential. The request should include the assertion returned by the browser together with the server-issued `request_id`. mini-auth uses `request_id` to load the challenge and identifies the user by the returned credential ID before returning a session with refresh/access token pair if successful.
+- `DELETE /webauthn/credentials/:id` - Delete a WebAuthn credential by its ID. Requires a valid JWT token in the Authorization header.
+
+### Passkey Flow Notes
+
+- Passkey registration is an authenticated action. Users sign in with email first, then bind one or more discoverable Passkeys to their account.
+- Passkey authentication is username-less. The client first calls `POST /webauthn/authenticate/options` with an empty body, then calls `navigator.credentials.get()` with the returned challenge.
+- The server should generate a `request_id` for each register or authenticate challenge. The client sends this `request_id` back to the matching `verify` endpoint.
+- Generating a new register or authenticate challenge should invalidate the previous unused challenge of the same type. This provides refresh semantics without needing a separate cancel endpoint.
 
 ## Operations
 
