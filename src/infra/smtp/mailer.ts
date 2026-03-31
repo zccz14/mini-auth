@@ -165,11 +165,7 @@ async function connectSmtp(
 ): Promise<net.Socket | tls.TLSSocket> {
   return new Promise((resolve, reject) => {
     const socket = config.secure
-      ? tls.connect({
-          host: config.host,
-          port: config.port,
-          rejectUnauthorized: false
-        })
+      ? tls.connect(buildSecureSmtpOptions(config))
       : net.connect({
           host: config.host,
           port: config.port
@@ -181,6 +177,16 @@ async function connectSmtp(
       resolve(socket)
     })
   })
+}
+
+export function buildSecureSmtpOptions(
+  config: Pick<NormalizedSmtpConfig, 'host' | 'port'>
+): tls.ConnectionOptions {
+  return {
+    host: config.host,
+    port: config.port,
+    servername: config.host
+  }
 }
 
 async function sendCommand(

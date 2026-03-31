@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createDatabaseClient } from '../../src/infra/db/client.js'
+import { mintSessionTokens } from '../../src/modules/session/service.js'
+import { consumeChallengeAndUpdateCredentialCounter } from '../../src/modules/webauthn/repo.js'
 import { createTestApp } from '../helpers/app.js'
 import { extractOtpCode } from '../helpers/mock-smtp.js'
 import { createTestPasskey } from '../helpers/webauthn.js'
@@ -438,6 +441,80 @@ describe('webauthn routes', () => {
 
     expect(firstResponse.status).toBe(200)
     expect(secondResponse.status).toBe(200)
+  })
+
+  it('replayed assertions across concurrent auth attempts cannot mint multiple sessions', async () => {
+    const testApp = await createSignedInApp('webauthn-race@example.com')
+    openApps.push(testApp)
+    const passkey = await registerPasskey(testApp, 'webauthn-race@example.com')
+    const [firstOptions, secondOptions] = await Promise.all([
+      getAuthOptions(testApp),
+      getAuthOptions(testApp)
+    ])
+    const firstAssertion = passkey.createAuthenticationCredentialWithCounter(
+      firstOptions.publicKey,
+      origin,
+      1
+    )
+    const secondAssertion = passkey.createAuthenticationCredentialWithCounter(
+      secondOptions.publicKey,
+      origin,
+      1
+    )
+    const credential = testApp.db
+      .prepare('SELECT id, user_id, counter FROM webauthn_credentials LIMIT 1')
+      .get() as { id: string; user_id: string; counter: number }
+    const writerDb = createDatabaseClient(testApp.dbPath)
+    const readerDb = createDatabaseClient(testApp.dbPath)
+
+    try {
+      const firstClaim = consumeChallengeAndUpdateCredentialCounter(writerDb, {
+        requestId: firstOptions.request_id,
+        credentialId: credential.id,
+        expectedCounter: credential.counter,
+        nextCounter: 1,
+        now: '2030-01-01T00:00:00.000Z'
+      })
+      const secondClaim = consumeChallengeAndUpdateCredentialCounter(readerDb, {
+        requestId: secondOptions.request_id,
+        credentialId: credential.id,
+        expectedCounter: credential.counter,
+        nextCounter: 1,
+        now: '2030-01-01T00:00:01.000Z'
+      })
+
+      if (firstClaim) {
+        await mintSessionTokens(writerDb, {
+          userId: credential.user_id,
+          issuer: 'https://issuer.example'
+        })
+      }
+
+      if (secondClaim) {
+        await mintSessionTokens(readerDb, {
+          userId: credential.user_id,
+          issuer: 'https://issuer.example'
+        })
+      }
+
+      const sessions = testApp.db
+        .prepare('SELECT id FROM sessions WHERE user_id = ?')
+        .all(credential.user_id) as Array<{ id: string }>
+      const storedCredential = testApp.db
+        .prepare('SELECT counter FROM webauthn_credentials WHERE id = ?')
+        .get(credential.id) as { counter: number }
+
+      expect(firstAssertion.response.signature).not.toBe(
+        secondAssertion.response.signature
+      )
+      expect(firstClaim).toBe(true)
+      expect(secondClaim).toBe(false)
+      expect(sessions).toHaveLength(2)
+      expect(storedCredential.counter).toBe(1)
+    } finally {
+      writerDb.close()
+      readerDb.close()
+    }
   })
 })
 

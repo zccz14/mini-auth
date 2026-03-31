@@ -162,6 +162,29 @@ describe('session routes', () => {
     expect(session.revoked_at).toBeTruthy()
   })
 
+  it('logout makes the current refresh token unusable', async () => {
+    const testApp = await createSignedInApp('logout-refresh@example.com')
+    openApps.push(testApp)
+
+    const logoutResponse = await testApp.app.request('/session/logout', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${testApp.tokens.access_token}`
+      }
+    })
+    const refreshResponse = await testApp.app.request('/session/refresh', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: json({ refresh_token: testApp.tokens.refresh_token })
+    })
+
+    expect(logoutResponse.status).toBe(200)
+    expect(refreshResponse.status).toBe(401)
+    expect(await refreshResponse.json()).toEqual({
+      error: 'invalid_refresh_token'
+    })
+  })
+
   it('me returns user id, email, credentials, and active sessions', async () => {
     const testApp = await createSignedInApp('me@example.com')
     openApps.push(testApp)

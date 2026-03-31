@@ -72,6 +72,17 @@ export function createTestPasskey(seed = 'default-passkey') {
       origin: string
     ) {
       counter += 1
+      return this.createAuthenticationCredentialWithCounter(
+        options,
+        origin,
+        counter
+      )
+    },
+    createAuthenticationCredentialWithCounter(
+      options: AuthenticationOptions,
+      origin: string,
+      nextCounter: number
+    ) {
       const clientDataJSON = toClientDataJSON({
         type: 'webauthn.get',
         challenge: options.challenge,
@@ -80,7 +91,7 @@ export function createTestPasskey(seed = 'default-passkey') {
       const authenticatorData = Buffer.concat([
         sha256(options.rpId),
         Buffer.from([0x05]),
-        toUint32Buffer(counter)
+        toUint32Buffer(nextCounter)
       ])
       const signature = signPayload(
         privateKey,

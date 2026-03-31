@@ -11,14 +11,14 @@ import { decodeBase64Url, encodeBase64Url } from '../../shared/crypto.js'
 import { TTLS } from '../../shared/time.js'
 import { mintSessionTokens } from '../session/service.js'
 import {
+  consumeChallengeAndUpdateCredentialCounter,
   consumeChallenge,
   consumeUnusedRegistrationChallengesForUser,
   createChallenge,
   createCredential,
   deleteCredentialById,
   getChallengeByRequestId,
-  getCredentialByCredentialId,
-  updateCredentialCounter
+  getCredentialByCredentialId
 } from './repo.js'
 
 const decoder = new Decoder()
@@ -249,11 +249,17 @@ export async function verifyAuthentication(
     storedCredential.counter
   )
 
-  if (!consumeChallenge(db, challenge.requestId, new Date().toISOString())) {
+  if (
+    !consumeChallengeAndUpdateCredentialCounter(db, {
+      requestId: challenge.requestId,
+      credentialId: storedCredential.id,
+      expectedCounter: storedCredential.counter,
+      nextCounter,
+      now: new Date().toISOString()
+    })
+  ) {
     throw new InvalidWebauthnAuthenticationError()
   }
-
-  updateCredentialCounter(db, storedCredential.id, nextCounter)
 
   return mintSessionTokens(db, {
     userId: storedCredential.userId,

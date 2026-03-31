@@ -2,7 +2,10 @@ import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { selectSmtpConfig } from '../../src/infra/smtp/mailer.js'
+import {
+  buildSecureSmtpOptions,
+  selectSmtpConfig
+} from '../../src/infra/smtp/mailer.js'
 import { parseRuntimeConfig } from '../../src/shared/config.js'
 import { TTLS, getExpiresAtUnixSeconds } from '../../src/shared/time.js'
 import { createTempDbPath } from '../helpers/db.js'
@@ -59,6 +62,19 @@ describe('shared runtime defaults', () => {
       fromName: '',
       secure: false,
       isActive: true
+    })
+  })
+
+  it('keeps tls certificate verification enabled for secure smtp', () => {
+    expect(
+      buildSecureSmtpOptions({
+        host: 'smtp.example.com',
+        port: 465
+      })
+    ).toEqual({
+      host: 'smtp.example.com',
+      port: 465,
+      servername: 'smtp.example.com'
     })
   })
 

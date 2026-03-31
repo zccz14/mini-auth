@@ -190,6 +190,55 @@ export function updateCredentialCounter(
   )
 }
 
+export function consumeChallengeAndUpdateCredentialCounter(
+  db: DatabaseClient,
+  input: {
+    requestId: string
+    credentialId: string
+    expectedCounter: number
+    nextCounter: number
+    now: string
+  }
+): boolean {
+  const consume = db.prepare(
+    'UPDATE webauthn_challenges SET consumed_at = ? WHERE request_id = ? AND consumed_at IS NULL'
+  )
+  const update = db.prepare(
+    'UPDATE webauthn_credentials SET counter = ? WHERE id = ? AND counter = ?'
+  )
+  const transaction = db.transaction(
+    (
+      requestId: string,
+      credentialId: string,
+      expectedCounter: number,
+      nextCounter: number,
+      now: string
+    ): boolean => {
+      const consumeResult = consume.run(now, requestId)
+
+      if (consumeResult.changes === 0) {
+        return false
+      }
+
+      const updateResult = update.run(
+        nextCounter,
+        credentialId,
+        expectedCounter
+      )
+
+      return updateResult.changes > 0
+    }
+  )
+
+  return transaction(
+    input.requestId,
+    input.credentialId,
+    input.expectedCounter,
+    input.nextCounter,
+    input.now
+  )
+}
+
 export function deleteCredentialById(
   db: DatabaseClient,
   id: string,
