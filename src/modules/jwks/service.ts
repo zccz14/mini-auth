@@ -94,7 +94,7 @@ export async function verifyJwt(
     throw new Error('JWT exp must be a number')
   }
 
-  if (payload.exp < getUnixTimeSeconds()) {
+  if (payload.exp <= getUnixTimeSeconds()) {
     throw new Error('JWT expired')
   }
 

@@ -1,5 +1,5 @@
 import { createPrivateKey, sign } from 'node:crypto'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { bootstrapDatabase } from '../../src/infra/db/bootstrap.js'
 import { createDatabaseClient } from '../../src/infra/db/client.js'
 import {
@@ -13,6 +13,10 @@ import { encodeBase64Url, type PrivateJwk } from '../../src/shared/crypto.js'
 import { createTempDbPath } from '../helpers/db.js'
 
 describe('jwks service', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('generates an Ed25519 signing key and emits a public jwks entry', async () => {
     const dbPath = await createTempDbPath()
     await bootstrapDatabase(dbPath)
@@ -158,6 +162,38 @@ describe('jwks service', () => {
 
       await expect(verifyJwt(db, missingAlgToken)).rejects.toThrowError(
         'JWT header alg must be EdDSA'
+      )
+    } finally {
+      db.close()
+    }
+  })
+
+  it('rejects tokens when exp equals the current time', async () => {
+    const dbPath = await createTempDbPath()
+    await bootstrapDatabase(dbPath)
+    const db = createDatabaseClient(dbPath)
+
+    try {
+      await bootstrapKeys(db)
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2030-01-01T00:00:00.000Z'))
+
+      const expNowToken = createSignedToken(
+        db,
+        {
+          alg: 'EdDSA',
+          kid: getActiveKid(db),
+          typ: 'JWT'
+        },
+        {
+          sub: 'user-1',
+          typ: 'access',
+          exp: 1_893_456_000
+        }
+      )
+
+      await expect(verifyJwt(db, expNowToken)).rejects.toThrowError(
+        'JWT expired'
       )
     } finally {
       db.close()
