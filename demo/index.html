@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>mini-auth Demo Console</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="hero">
+        <p class="eyebrow">mini-auth / manual test console</p>
+        <h1>Test email OTP and passkey flows from one page</h1>
+        <p class="hero-copy">
+          A lightweight browser UI for manually exercising the server APIs with
+          real requests and real WebAuthn ceremonies.
+        </p>
+      </section>
+
+      <section class="setup-note panel">
+        <div>
+          <h2>Setup</h2>
+          <p>
+            The server does not expose CORS headers, so the simplest browser
+            setup is to run the demo through a same-origin proxy.
+          </p>
+        </div>
+        <div class="setup-grid">
+          <div>
+            <h3>Recommended live-server command</h3>
+            <pre id="proxy-command">
+live-server demo --proxy=/api:http://127.0.0.1:7777</pre
+            >
+          </div>
+          <div>
+            <h3>Server must allow this origin</h3>
+            <pre id="origin-command">
+mini-auth start ... --origin http://127.0.0.1:8080</pre
+            >
+          </div>
+        </div>
+      </section>
+
+      <div class="workspace">
+        <section class="flow-column">
+          <article class="panel card">
+            <div class="card-head">
+              <div>
+                <p class="step-label">Config</p>
+                <h2>Server Config</h2>
+              </div>
+              <span class="status-pill" id="status-config">Ready</span>
+            </div>
+
+            <label class="field">
+              <span>Base URL</span>
+              <input
+                id="base-url"
+                type="text"
+                placeholder="/api or http://127.0.0.1:7777"
+              />
+            </label>
+
+            <div class="inline-meta">
+              <span
+                >Current page origin: <strong id="page-origin"></strong
+              ></span>
+              <span>Suggested RP ID: <strong id="page-rp-id"></strong></span>
+            </div>
+          </article>
+
+          <article class="panel card">
+            <div class="card-head">
+              <div>
+                <p class="step-label">Step 1</p>
+                <h2>Email Start</h2>
+              </div>
+              <span class="status-pill" id="status-email-start">Idle</span>
+            </div>
+
+            <label class="field">
+              <span>Email</span>
+              <input id="email" type="email" placeholder="user@example.com" />
+            </label>
+
+            <button
+              id="email-start-button"
+              class="primary-button"
+              type="button"
+            >
+              POST /email/start
+            </button>
+
+            <pre class="mini-output" id="email-start-output">
+No request yet.</pre
+            >
+          </article>
+
+          <article class="panel card">
+            <div class="card-head">
+              <div>
+                <p class="step-label">Step 2</p>
+                <h2>Email Verify</h2>
+              </div>
+              <span class="status-pill" id="status-email-verify">Idle</span>
+            </div>
+
+            <label class="field">
+              <span>OTP Code</span>
+              <input
+                id="otp-code"
+                type="text"
+                inputmode="numeric"
+                placeholder="123456"
+              />
+            </label>
+
+            <button
+              id="email-verify-button"
+              class="primary-button"
+              type="button"
+            >
+              POST /email/verify
+            </button>
+
+            <pre class="mini-output" id="email-verify-output">
+No request yet.</pre
+            >
+          </article>
+
+          <article class="panel card">
+            <div class="card-head">
+              <div>
+                <p class="step-label">Step 3</p>
+                <h2>Register Passkey</h2>
+              </div>
+              <span class="status-pill" id="status-register">Idle</span>
+            </div>
+
+            <p class="card-copy">
+              Uses the current access token, fetches registration options, opens
+              the browser passkey prompt, then posts
+              `/webauthn/register/verify`.
+            </p>
+
+            <button id="register-button" class="primary-button" type="button">
+              Create and bind passkey
+            </button>
+
+            <pre class="mini-output" id="register-output">No request yet.</pre>
+          </article>
+
+          <article class="panel card">
+            <div class="card-head">
+              <div>
+                <p class="step-label">Step 4</p>
+                <h2>Authenticate Passkey</h2>
+              </div>
+              <span class="status-pill" id="status-authenticate">Idle</span>
+            </div>
+
+            <p class="card-copy">
+              Starts a username-less passkey login with
+              `/webauthn/authenticate/options`, opens the browser prompt, then
+              posts `/webauthn/authenticate/verify`.
+            </p>
+
+            <button
+              id="authenticate-button"
+              class="primary-button"
+              type="button"
+            >
+              Sign in with passkey
+            </button>
+
+            <pre class="mini-output" id="authenticate-output">
+No request yet.</pre
+            >
+          </article>
+        </section>
+
+        <aside class="state-column panel">
+          <div class="card-head">
+            <div>
+              <p class="step-label">State</p>
+              <h2>Session / Output</h2>
+            </div>
+            <button id="clear-state-button" class="ghost-button" type="button">
+              Clear
+            </button>
+          </div>
+
+          <div class="state-block">
+            <span class="state-label">Access token</span>
+            <textarea
+              id="access-token"
+              rows="4"
+              readonly
+              placeholder="Set after email verify or passkey auth"
+            ></textarea>
+          </div>
+
+          <div class="state-block">
+            <span class="state-label">Refresh token</span>
+            <textarea
+              id="refresh-token"
+              rows="4"
+              readonly
+              placeholder="Set after email verify or passkey auth"
+            ></textarea>
+          </div>
+
+          <div class="state-block">
+            <span class="state-label">Latest request_id</span>
+            <input
+              id="request-id"
+              type="text"
+              readonly
+              placeholder="Captured from WebAuthn options responses"
+            />
+          </div>
+
+          <div class="state-block">
+            <span class="state-label">Latest request</span>
+            <pre id="latest-request">No request yet.</pre>
+          </div>
+
+          <div class="state-block">
+            <span class="state-label">Latest response</span>
+            <pre id="latest-response">No response yet.</pre>
+          </div>
+        </aside>
+      </div>
+    </main>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
