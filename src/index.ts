@@ -2,6 +2,7 @@
 
 import { cac } from 'cac'
 import { runCreateCommand } from './cli/create.js'
+import { normalizeOriginOption } from './cli/options.js'
 import { runStartCommand } from './cli/start.js'
 import { runRotateJwksCommand } from './cli/rotate-jwks.js'
 
@@ -37,7 +38,7 @@ cli
         port?: string
         issuer?: string
         rpId?: string
-        origin?: string[]
+        origin?: string | string[]
       }
     ) => {
       await executeCommand(async () => {
@@ -47,7 +48,7 @@ cli
           port: options.port,
           issuer: options.issuer,
           rpId: options.rpId,
-          origin: options.origin
+          origin: normalizeOriginOption(options.origin)
         })
       })
     }
