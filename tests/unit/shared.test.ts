@@ -2,6 +2,8 @@ import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { parseRuntimeConfig } from '../../src/shared/config.js'
+import { TTLS, getExpiresAtUnixSeconds } from '../../src/shared/time.js'
 import { createTempDbPath } from '../helpers/db.js'
 import { exists } from '../helpers/fs.js'
 
@@ -21,5 +23,38 @@ describe('test helpers', () => {
 
     expect(dbPath.endsWith('.sqlite')).toBe(true)
     await expect(exists(dbPath)).resolves.toBe(false)
+  })
+})
+
+describe('shared runtime defaults', () => {
+  it('exposes agreed TTL defaults', () => {
+    expect(TTLS.otpSeconds).toBe(600)
+    expect(TTLS.webauthnChallengeSeconds).toBe(300)
+    expect(TTLS.accessTokenSeconds).toBe(900)
+    expect(TTLS.refreshTokenSeconds).toBe(604800)
+  })
+
+  it('parses runtime config with cli defaults and ordered origins', () => {
+    expect(
+      parseRuntimeConfig({
+        dbPath: '/tmp/mini-auth.sqlite',
+        issuer: 'https://issuer.example',
+        rpId: 'example.com',
+        origin: ['https://one.example', 'https://two.example']
+      })
+    ).toEqual({
+      dbPath: '/tmp/mini-auth.sqlite',
+      host: '127.0.0.1',
+      port: 7777,
+      issuer: 'https://issuer.example',
+      rpId: 'example.com',
+      origins: ['https://one.example', 'https://two.example']
+    })
+  })
+
+  it('computes jwt expiry timestamps from ttl seconds', () => {
+    expect(
+      getExpiresAtUnixSeconds(1_700_000_000, TTLS.accessTokenSeconds)
+    ).toBe(1_700_000_900)
   })
 })

@@ -1,6 +1,26 @@
 import { spawn } from 'node:child_process'
+import { mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { createDatabaseClient } from '../../src/infra/db/client.js'
+import { runCli } from '../helpers/cli.js'
+import { countRows, createTempDbPath } from '../helpers/db.js'
 import { exists } from '../helpers/fs.js'
+
+let buildPromise: Promise<void> | null = null
+
+async function ensureCliIsBuilt(): Promise<void> {
+  if (!buildPromise) {
+    buildPromise = runCommand('npm', ['run', 'build']).then((result) => {
+      if (result.exitCode !== 0) {
+        throw new Error(result.stderr || result.stdout || 'CLI build failed')
+      }
+    })
+  }
+
+  await buildPromise
+}
 
 async function runCommand(command: string, args: string[]) {
   return new Promise<{ exitCode: number; stdout: string; stderr: string }>(
@@ -75,11 +95,8 @@ describe('workspace bootstrap', () => {
   })
 
   it('runs the built cli help smoke path', async () => {
-    const { runCli } = await import('../helpers/cli.js')
+    await ensureCliIsBuilt()
 
-    const build = await runCommand('npm', ['run', 'build'])
-
-    expect(build.exitCode).toBe(0)
     expect(await exists('dist/index.js')).toBe(true)
 
     const result = await runCli(['--help'])
@@ -88,6 +105,177 @@ describe('workspace bootstrap', () => {
     expect(result.stderr).toBe('')
     expect(result.stdout).toContain('mini-auth')
     expect(result.stdout).toContain('--help')
+  })
+
+  it('create initializes schema and seeds an active jwks key', async () => {
+    await ensureCliIsBuilt()
+    const dbPath = await createTempDbPath()
+
+    const result = await runCli(['create', dbPath])
+
+    expect(result.exitCode).toBe(0)
+    expect(await countRows(dbPath, 'jwks_keys')).toBe(1)
+
+    const db = createDatabaseClient(dbPath)
+
+    try {
+      const activeRow = db
+        .prepare(
+          'SELECT kid, alg, is_active FROM jwks_keys WHERE is_active = 1'
+        )
+        .get() as { kid: string; alg: string; is_active: number } | undefined
+
+      expect(activeRow).toMatchObject({ alg: 'EdDSA', is_active: 1 })
+      expect(activeRow?.kid).toBeTruthy()
+    } finally {
+      db.close()
+    }
+  })
+
+  it('create imports valid smtp json', async () => {
+    await ensureCliIsBuilt()
+    const dbPath = await createTempDbPath()
+    const tempDir = await mkdtemp(join(tmpdir(), 'mini-auth-smtp-'))
+    const smtpJsonPath = join(tempDir, 'smtp.json')
+
+    await writeFile(
+      smtpJsonPath,
+      JSON.stringify([
+        {
+          host: 'smtp.example.com',
+          port: 587,
+          username: 'mailer',
+          password: 'secret',
+          from_email: 'noreply@example.com'
+        }
+      ]),
+      'utf8'
+    )
+
+    const result = await runCli([
+      'create',
+      dbPath,
+      '--smtp-config',
+      smtpJsonPath
+    ])
+
+    expect(result.exitCode).toBe(0)
+    expect(await countRows(dbPath, 'smtp_configs')).toBe(1)
+
+    const db = createDatabaseClient(dbPath)
+
+    try {
+      const smtpRow = db
+        .prepare(
+          [
+            'SELECT host, port, username, from_email, from_name, secure, weight',
+            'FROM smtp_configs'
+          ].join(' ')
+        )
+        .get() as {
+        host: string
+        port: number
+        username: string
+        from_email: string
+        from_name: string
+        secure: number
+        weight: number
+      }
+
+      expect(smtpRow).toEqual({
+        host: 'smtp.example.com',
+        port: 587,
+        username: 'mailer',
+        from_email: 'noreply@example.com',
+        from_name: '',
+        secure: 0,
+        weight: 1
+      })
+    } finally {
+      db.close()
+    }
+  })
+
+  it('create rejects invalid smtp json and imports nothing', async () => {
+    await ensureCliIsBuilt()
+    const dbPath = await createTempDbPath()
+    const tempDir = await mkdtemp(join(tmpdir(), 'mini-auth-smtp-'))
+    const smtpJsonPath = join(tempDir, 'smtp.json')
+
+    await writeFile(smtpJsonPath, '{"host":"broken"}', 'utf8')
+
+    const result = await runCli([
+      'create',
+      dbPath,
+      '--smtp-config',
+      smtpJsonPath
+    ])
+
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr).toContain('Invalid SMTP config')
+    expect(await countRows(dbPath, 'smtp_configs')).toBe(0)
+  })
+
+  it('create rejects smtp rows missing host, port, username, password, or from_email', async () => {
+    await ensureCliIsBuilt()
+    const dbPath = await createTempDbPath()
+    const tempDir = await mkdtemp(join(tmpdir(), 'mini-auth-smtp-'))
+    const smtpJsonPath = join(tempDir, 'smtp.json')
+
+    await writeFile(
+      smtpJsonPath,
+      JSON.stringify([
+        {
+          host: 'smtp.example.com',
+          port: 587,
+          username: 'mailer',
+          password: 'secret',
+          from_email: 'noreply@example.com'
+        },
+        {
+          host: 'smtp-backup.example.com',
+          port: 2525,
+          username: 'backup',
+          password: 'secret'
+        }
+      ]),
+      'utf8'
+    )
+
+    const result = await runCli([
+      'create',
+      dbPath,
+      '--smtp-config',
+      smtpJsonPath
+    ])
+
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr).toContain('Invalid SMTP config')
+    expect(await countRows(dbPath, 'smtp_configs')).toBe(0)
+  })
+
+  it('rotate-jwks generates a new active key and keeps older keys', async () => {
+    await ensureCliIsBuilt()
+    const dbPath = await createTempDbPath()
+
+    const createResult = await runCli(['create', dbPath])
+    const rotateResult = await runCli(['rotate-jwks', dbPath])
+
+    expect(createResult.exitCode).toBe(0)
+    expect(rotateResult.exitCode).toBe(0)
+    expect(await countRows(dbPath, 'jwks_keys')).toBe(2)
+
+    const db = createDatabaseClient(dbPath)
+
+    try {
+      const activeCount = db
+        .prepare('SELECT COUNT(*) AS count FROM jwks_keys WHERE is_active = 1')
+        .get() as { count: number }
+
+      expect(activeCount.count).toBe(1)
+    } finally {
+      db.close()
+    }
   })
 
   it('creates all v1 tables', async () => {
