@@ -66,10 +66,9 @@ type AppVariables = AuthVariables & {
   rpId: string
 }
 
-const REMOTE_ADDRESS_HEADER = 'x-mini-auth-remote-address'
-
 export function createApp(input: {
   db: DatabaseClient
+  getClientIp?: (request: Request) => string | null
   issuer: string
   logger: AppLogger
   origins: string[]
@@ -86,7 +85,7 @@ export function createApp(input: {
     c.set('origins', input.origins)
     c.set('requestId', requestId)
     c.set('rpId', input.rpId)
-    c.set('clientIp', c.req.header(REMOTE_ADDRESS_HEADER) ?? null)
+    c.set('clientIp', input.getClientIp?.(c.req.raw) ?? null)
 
     await next()
   })

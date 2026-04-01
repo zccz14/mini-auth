@@ -6,6 +6,7 @@ import { createTempDbPath } from './db.js'
 import { createMemoryLogCollector } from './logging.js'
 
 type CreateTestAppOptions = {
+  clientIp?: string | null
   smtpConfigs?: Array<{
     host?: string
     port?: number
@@ -61,8 +62,12 @@ export async function createTestApp(options: CreateTestAppOptions = {}) {
     )
   }
 
+  const clientIps = new WeakMap<Request, string | null>()
   const app = createApp({
     db,
+    getClientIp(request) {
+      return clientIps.get(request) ?? null
+    },
     issuer: 'https://issuer.example',
     origins: ['https://app.example.com'],
     rpId: 'example.com',
@@ -70,7 +75,16 @@ export async function createTestApp(options: CreateTestAppOptions = {}) {
   })
 
   return {
-    app,
+    app: {
+      request(input: string, init?: RequestInit) {
+        const request = new Request(
+          new URL(input, 'http://mini-auth.test'),
+          init
+        )
+        clientIps.set(request, options.clientIp ?? null)
+        return app.fetch(request)
+      }
+    },
     db,
     dbPath,
     logs: logCollector.entries,

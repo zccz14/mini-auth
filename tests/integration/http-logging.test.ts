@@ -23,15 +23,10 @@ afterEach(async () => {
 
 describe('http request logging', () => {
   it('emits request start and one terminal completion event', async () => {
-    const testApp = await createTestApp()
+    const testApp = await createTestApp({ clientIp: '203.0.113.5' })
     openResources.push(testApp)
 
-    const response = await testApp.app.request('/jwks', {
-      method: 'GET',
-      headers: {
-        'x-mini-auth-remote-address': '203.0.113.5'
-      }
-    })
+    const response = await testApp.app.request('/jwks', { method: 'GET' })
 
     expect(response.status).toBe(200)
 
@@ -61,14 +56,16 @@ describe('http request logging', () => {
   })
 
   it('emits one terminal completion event for handled errors', async () => {
-    const testApp = await createTestApp({ smtpConfigs: [] })
+    const testApp = await createTestApp({
+      clientIp: '203.0.113.7',
+      smtpConfigs: []
+    })
     openResources.push(testApp)
 
     const response = await testApp.app.request('/email/start', {
       method: 'POST',
       headers: {
-        'content-type': 'application/json',
-        'x-mini-auth-remote-address': '203.0.113.7'
+        'content-type': 'application/json'
       },
       body: json({ email: 'user@example.com' })
     })
@@ -96,8 +93,12 @@ describe('http request logging', () => {
     await bootstrapDatabase(dbPath)
     const db = createDatabaseClient(dbPath)
     const logCollector = createMemoryLogCollector()
+    const clientIps = new WeakMap<Request, string | null>()
     const app = createApp({
       db,
+      getClientIp(request) {
+        return clientIps.get(request) ?? null
+      },
       issuer: 'https://issuer.example',
       origins: ['https://app.example.com'],
       rpId: 'example.com',
@@ -114,11 +115,10 @@ describe('http request logging', () => {
       throw new Error('boom')
     })
 
-    const response = await app.request('/boom', {
-      headers: {
-        'x-mini-auth-remote-address': '203.0.113.9'
-      }
-    })
+    const request = new Request('http://mini-auth.test/boom')
+    clientIps.set(request, '203.0.113.9')
+
+    const response = await app.fetch(request)
 
     expect(response.status).toBe(500)
 

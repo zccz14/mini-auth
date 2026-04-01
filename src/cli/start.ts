@@ -6,8 +6,6 @@ import { bootstrapKeys } from '../modules/jwks/service.js'
 import { createApp } from '../server/app.js'
 import { createRootLogger } from '../shared/logger.js'
 
-const REMOTE_ADDRESS_HEADER = 'x-mini-auth-remote-address'
-
 type StartCommandInput = {
   loggerSink?: { write(line: string): void }
 }
@@ -23,8 +21,13 @@ export async function runStartCommand(
 
   await bootstrapKeys(db)
 
+  const clientIps = new WeakMap<Request, string | null>()
+
   const app = createApp({
     db,
+    getClientIp(request) {
+      return clientIps.get(request) ?? null
+    },
     issuer: config.issuer,
     logger,
     origins: config.origins,
@@ -35,12 +38,13 @@ export async function runStartCommand(
     const origin = `http://${req.headers.host ?? `${config.host}:${config.port}`}`
     const request = new Request(new URL(req.url ?? '/', origin), {
       method: req.method,
-      headers: toHeaders(req.headers, req.socket.remoteAddress),
+      headers: toHeaders(req.headers),
       body:
         req.method === 'GET' || req.method === 'HEAD'
           ? undefined
           : await readRequestBody(req)
     })
+    clientIps.set(request, req.socket.remoteAddress ?? null)
     const response = await app.fetch(request)
 
     res.statusCode = response.status
@@ -100,10 +104,7 @@ async function readRequestBody(
   return Buffer.concat(chunks).toString('utf8')
 }
 
-function toHeaders(
-  headers: IncomingHttpHeaders,
-  remoteAddress?: string
-): Headers {
+function toHeaders(headers: IncomingHttpHeaders): Headers {
   const result = new Headers()
 
   for (const [key, value] of Object.entries(headers)) {
@@ -117,10 +118,6 @@ function toHeaders(
         result.append(key, item)
       }
     }
-  }
-
-  if (remoteAddress) {
-    result.set(REMOTE_ADDRESS_HEADER, remoteAddress)
   }
 
   return result
