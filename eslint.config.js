@@ -17,5 +17,15 @@ export default tseslint.config(
         ...globals.node
       }
     }
+  },
+  {
+    files: ['demo/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: {
+        ...globals.browser
+      }
+    }
   }
 )

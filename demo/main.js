@@ -329,7 +329,7 @@ function clearState() {
   state.latestResponse = null
   elements.otpCode.value = ''
 
-  for (const [name, view] of Object.entries(sectionViews)) {
+  for (const view of Object.values(sectionViews)) {
     setPillState(view.pill, 'Idle', '')
     view.output.textContent = 'No request yet.'
   }
