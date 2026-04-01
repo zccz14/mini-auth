@@ -4,18 +4,29 @@ import { parseRuntimeConfig } from '../shared/config.js'
 import { createDatabaseClient } from '../infra/db/client.js'
 import { bootstrapKeys } from '../modules/jwks/service.js'
 import { createApp } from '../server/app.js'
+import { createRootLogger } from '../shared/logger.js'
+
+const REMOTE_ADDRESS_HEADER = 'x-mini-auth-remote-address'
+
+type StartCommandInput = {
+  loggerSink?: { write(line: string): void }
+}
 
 export async function runStartCommand(
   input: unknown
 ): Promise<{ close(): Promise<void> }> {
+  const logger = createRootLogger({ sink: toLoggerSink(input) })
   const config = parseRuntimeConfig(input)
   const db = createDatabaseClient(config.dbPath)
+
+  logger.info({ event: 'cli.start.started' }, 'Starting mini-auth server')
 
   await bootstrapKeys(db)
 
   const app = createApp({
     db,
     issuer: config.issuer,
+    logger,
     origins: config.origins,
     rpId: config.rpId
   })
@@ -24,7 +35,7 @@ export async function runStartCommand(
     const origin = `http://${req.headers.host ?? `${config.host}:${config.port}`}`
     const request = new Request(new URL(req.url ?? '/', origin), {
       method: req.method,
-      headers: toHeaders(req.headers),
+      headers: toHeaders(req.headers, req.socket.remoteAddress),
       body:
         req.method === 'GET' || req.method === 'HEAD'
           ? undefined
@@ -44,6 +55,14 @@ export async function runStartCommand(
     server.once('error', reject)
     server.listen(config.port, config.host, () => {
       server.off('error', reject)
+      logger.info(
+        {
+          event: 'server.listening',
+          host: config.host,
+          port: config.port
+        },
+        'mini-auth server listening'
+      )
       resolve()
     })
   })
@@ -58,6 +77,10 @@ export async function runStartCommand(
           }
 
           db.close()
+          logger.info(
+            { event: 'server.shutdown.completed' },
+            'mini-auth server shutdown complete'
+          )
           resolve()
         })
       })
@@ -77,7 +100,10 @@ async function readRequestBody(
   return Buffer.concat(chunks).toString('utf8')
 }
 
-function toHeaders(headers: IncomingHttpHeaders): Headers {
+function toHeaders(
+  headers: IncomingHttpHeaders,
+  remoteAddress?: string
+): Headers {
   const result = new Headers()
 
   for (const [key, value] of Object.entries(headers)) {
@@ -93,5 +119,19 @@ function toHeaders(headers: IncomingHttpHeaders): Headers {
     }
   }
 
+  if (remoteAddress) {
+    result.set(REMOTE_ADDRESS_HEADER, remoteAddress)
+  }
+
   return result
+}
+
+function toLoggerSink(
+  input: unknown
+): { write(line: string): void } | undefined {
+  if (!input || typeof input !== 'object') {
+    return undefined
+  }
+
+  return (input as StartCommandInput).loggerSink
 }

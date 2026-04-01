@@ -37,6 +37,11 @@ import {
   webauthnAuthenticateVerifySchema,
   webauthnRegisterVerifySchema
 } from '../shared/http-schemas.js'
+import {
+  createRequestId,
+  type AppLogger,
+  withErrorFields
+} from '../shared/logger.js'
 import { requireAccessToken, type AuthVariables } from './auth.js'
 import {
   credentialNotFoundError,
@@ -52,29 +57,96 @@ import {
 } from './errors.js'
 
 type AppVariables = AuthVariables & {
+  clientIp: string | null
   db: DatabaseClient
   issuer: string
+  logger: AppLogger
   origins: string[]
+  requestId: string
   rpId: string
 }
+
+const REMOTE_ADDRESS_HEADER = 'x-mini-auth-remote-address'
 
 export function createApp(input: {
   db: DatabaseClient
   issuer: string
+  logger: AppLogger
   origins: string[]
   rpId: string
 }) {
   const app = new Hono<{ Variables: AppVariables }>()
 
   app.use(async (c, next) => {
+    const requestId = createRequestId()
+
     c.set('db', input.db)
     c.set('issuer', input.issuer)
+    c.set('logger', input.logger.child({ request_id: requestId }))
     c.set('origins', input.origins)
+    c.set('requestId', requestId)
     c.set('rpId', input.rpId)
+    c.set('clientIp', c.req.header(REMOTE_ADDRESS_HEADER) ?? null)
+
     await next()
   })
 
+  app.use(async (c, next) => {
+    const startedAt = Date.now()
+
+    c.var.logger.info(
+      requestLogFields(c, {
+        event: 'http.request.started'
+      }),
+      'Request started'
+    )
+
+    try {
+      await next()
+    } catch (error) {
+      const httpError = toHttpError(error)
+
+      if (httpError.status === 500) {
+        c.var.logger.error(
+          {
+            event: 'http.request.error',
+            ...withErrorFields(error)
+          },
+          'Unhandled request error'
+        )
+      }
+
+      c.res = c.json(
+        { error: httpError.code },
+        httpError.status as 400 | 401 | 404 | 409 | 500 | 503
+      )
+    }
+
+    c.var.logger.info(
+      requestLogFields(c, {
+        duration_ms: Date.now() - startedAt,
+        event: 'http.request.completed',
+        status_code: c.res.status
+      }),
+      'Request completed'
+    )
+  })
+
   app.onError((error, c) => {
+    if ('logger' in c.var) {
+      const httpError = toHttpError(error)
+
+      if (httpError.status === 500) {
+        c.var.logger.error(
+          {
+            event: 'http.request.error',
+            ...withErrorFields(error)
+          },
+          'Unhandled request error'
+        )
+      }
+    }
+
     const httpError = toHttpError(error)
     return c.json(
       { error: httpError.code },
@@ -269,4 +341,40 @@ function toHttpError(error: unknown): HttpError {
   }
 
   return new HttpError(500, 'internal_error')
+}
+
+function requestLogFields(
+  c: {
+    req: { method: string; path: string; routePath: string }
+    var: AppVariables
+  },
+  fields: {
+    event: 'http.request.started' | 'http.request.completed'
+    status_code?: number
+    duration_ms?: number
+  }
+): Record<string, unknown> {
+  const route = toRouteField(c.req.routePath)
+
+  return {
+    event: fields.event,
+    method: c.req.method,
+    path: c.req.path,
+    ...(route ? { route } : {}),
+    ...(fields.status_code !== undefined
+      ? { status_code: fields.status_code }
+      : {}),
+    ...(fields.duration_ms !== undefined
+      ? { duration_ms: fields.duration_ms }
+      : {}),
+    ...(c.var.clientIp ? { ip: c.var.clientIp } : {})
+  }
+}
+
+function toRouteField(routePath: string): string | undefined {
+  if (!routePath || routePath === '*' || routePath === '/*') {
+    return undefined
+  }
+
+  return routePath
 }

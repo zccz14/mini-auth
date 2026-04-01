@@ -3,6 +3,7 @@ import { createDatabaseClient } from '../../src/infra/db/client.js'
 import { createApp } from '../../src/server/app.js'
 import { bootstrapKeys } from '../../src/modules/jwks/service.js'
 import { createTempDbPath } from './db.js'
+import { createMemoryLogCollector } from './logging.js'
 
 type CreateTestAppOptions = {
   smtpConfigs?: Array<{
@@ -22,6 +23,7 @@ export async function createTestApp(options: CreateTestAppOptions = {}) {
   const dbPath = await createTempDbPath()
   await bootstrapDatabase(dbPath)
   const db = createDatabaseClient(dbPath)
+  const logCollector = createMemoryLogCollector()
 
   await bootstrapKeys(db)
 
@@ -63,13 +65,15 @@ export async function createTestApp(options: CreateTestAppOptions = {}) {
     db,
     issuer: 'https://issuer.example',
     origins: ['https://app.example.com'],
-    rpId: 'example.com'
+    rpId: 'example.com',
+    logger: logCollector.logger
   })
 
   return {
     app,
     db,
     dbPath,
+    logs: logCollector.entries,
     close() {
       db.close()
     }
