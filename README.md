@@ -40,6 +40,16 @@ Rotate JWKS keys:
 npx mini-auth rotate-jwks ./mini-auth.sqlite
 ```
 
+## Logging
+
+mini-auth writes structured JSON logs by default. The logs are suitable for redirection to a file:
+
+```bash
+npx mini-auth start ./mini-auth.sqlite --issuer https://auth.example.com --rp-id example.com --origin https://app.example.com >> mini-auth.log
+```
+
+In the current version, logs may contain plaintext email addresses and client IPs. Logs intentionally exclude OTP values, tokens, and SMTP passwords.
+
 ## SMTP import format
 
 `--smtp-config` expects a JSON array. Every row must be valid or the whole import is rejected.

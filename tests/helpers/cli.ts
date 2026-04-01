@@ -1,5 +1,8 @@
 import { spawn } from 'node:child_process'
 import { resolve } from 'node:path'
+import { runCreateCommand } from '../../src/cli/create.js'
+import { runRotateJwksCommand } from '../../src/cli/rotate-jwks.js'
+import { createMemoryLogCollector, type LogEntry } from './logging.js'
 
 export async function runCli(
   args: string[]
@@ -30,4 +33,35 @@ export async function runCli(
       })
     })
   })
+}
+
+export async function runLoggedCreateCommand(input: {
+  dbPath: string
+  smtpConfig?: string
+}): Promise<{ logs: LogEntry[] }> {
+  const logCollector = createMemoryLogCollector()
+
+  await runCreateCommand({
+    ...input,
+    loggerSink: logCollector.sink
+  })
+
+  return {
+    logs: logCollector.entries
+  }
+}
+
+export async function runLoggedRotateJwksCommand(input: {
+  dbPath: string
+}): Promise<{ logs: LogEntry[] }> {
+  const logCollector = createMemoryLogCollector()
+
+  await runRotateJwksCommand({
+    ...input,
+    loggerSink: logCollector.sink
+  })
+
+  return {
+    logs: logCollector.entries
+  }
 }

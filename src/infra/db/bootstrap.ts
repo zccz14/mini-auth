@@ -1,6 +1,7 @@
 import { access } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createRootLogger, type AppLogger } from '../../shared/logger.js'
 import { createDatabaseClient } from './client.js'
 import { runSqlFile } from './migrations.js'
 
@@ -28,12 +29,21 @@ async function resolveSchemaFilePath(): Promise<string> {
   )
 }
 
-export async function bootstrapDatabase(dbPath: string): Promise<void> {
+export async function bootstrapDatabase(
+  dbPath: string,
+  input?: { logger?: AppLogger }
+): Promise<void> {
+  const logger = input?.logger ?? createRootLogger().child({ db_path: dbPath })
   const db = createDatabaseClient(dbPath)
 
   try {
+    logger.info({ event: 'db.migration.started' }, 'Database migration started')
     const schemaFilePath = await resolveSchemaFilePath()
     await runSqlFile(db, schemaFilePath)
+    logger.info(
+      { event: 'db.migration.completed' },
+      'Database migration completed'
+    )
   } finally {
     db.close()
   }

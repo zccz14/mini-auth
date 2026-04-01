@@ -10,14 +10,26 @@ type RotateJwksCommandInput = {
 
 export async function runRotateJwksCommand(input: unknown): Promise<void> {
   const command = parseRotateJwksCommandInput(input)
-  const logger = createRootLogger({ sink: toLoggerSink(input) })
+  const logger = createRootLogger({ sink: toLoggerSink(input) }).child({
+    command: 'rotate-jwks',
+    db_path: command.dbPath
+  })
 
-  await bootstrapDatabase(command.dbPath)
+  logger.info(
+    { event: 'cli.rotate_jwks.started' },
+    'Rotate JWKS command started'
+  )
+
+  await bootstrapDatabase(command.dbPath, { logger })
 
   const db = createDatabaseClient(command.dbPath)
 
   try {
     await rotateKeys(db, { logger })
+    logger.info(
+      { event: 'cli.rotate_jwks.completed' },
+      'Rotate JWKS command completed'
+    )
   } finally {
     db.close()
   }

@@ -13,8 +13,11 @@ type StartCommandInput = {
 export async function runStartCommand(
   input: unknown
 ): Promise<{ close(): Promise<void> }> {
-  const logger = createRootLogger({ sink: toLoggerSink(input) })
   const config = parseRuntimeConfig(input)
+  const logger = createRootLogger({ sink: toLoggerSink(input) }).child({
+    command: 'start',
+    db_path: config.dbPath
+  })
   const db = createDatabaseClient(config.dbPath)
 
   logger.info({ event: 'cli.start.started' }, 'Starting mini-auth server')
