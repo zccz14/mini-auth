@@ -1,13 +1,47 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import type { OtpMailSeam } from '../helpers/mock-smtp.js'
+
+const otpSeam = vi.hoisted(() => ({ current: null as OtpMailSeam | null }))
+
+vi.mock('../../src/infra/smtp/mailer.js', async () => {
+  const actual = await vi.importActual<
+    typeof import('../../src/infra/smtp/mailer.js')
+  >('../../src/infra/smtp/mailer.js')
+
+  return {
+    ...actual,
+    async sendOtpMail(config: unknown, email: string, code: string) {
+      const seam = otpSeam.current
+
+      if (!seam) {
+        throw new Error('OTP seam not installed for email-auth tests')
+      }
+
+      return seam.sendOtpMail(
+        config as { fromEmail: string; fromName?: string },
+        email,
+        code
+      )
+    }
+  }
+})
+
 import { hashValue } from '../../src/shared/crypto.js'
 import { createTestApp } from '../helpers/app.js'
-import { extractOtpCode } from '../helpers/mock-smtp.js'
+import {
+  createOtpMailSeam,
+  extractOtpCode,
+  findLatestOtpMail
+} from '../helpers/mock-smtp.js'
 
 const json = (value: unknown) => JSON.stringify(value)
 
 const openApps: Array<{ close(): void }> = []
 
 afterEach(() => {
+  otpSeam.current = null
+
   while (openApps.length > 0) {
     openApps.pop()?.close()
   }
@@ -15,6 +49,7 @@ afterEach(() => {
 
 describe('email auth routes', () => {
   it('captures outgoing otp email in mock mailbox', async () => {
+    otpSeam.current = createOtpMailSeam()
     const testApp = await createTestApp()
     openApps.push(testApp)
 
@@ -26,13 +61,16 @@ describe('email auth routes', () => {
 
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({ ok: true })
-    expect(testApp.mailbox).toHaveLength(1)
-    expect(testApp.mailbox[0]?.to).toBe('user@example.com')
-    expect(testApp.mailbox[0]?.subject).toContain('verification code')
-    expect(extractOtpCode(testApp.mailbox[0]?.text ?? '')).toMatch(/^\d{6}$/)
+    const mailbox = otpSeam.current.mailbox
+
+    expect(mailbox).toHaveLength(1)
+    expect(mailbox[0]?.to).toBe('user@example.com')
+    expect(mailbox[0]?.subject).toContain('verification code')
+    expect(extractOtpCode(mailbox[0]?.text ?? '')).toMatch(/^\d{6}$/)
   })
 
   it('email/start returns the same success response for existing and new emails', async () => {
+    otpSeam.current = createOtpMailSeam()
     const testApp = await createTestApp()
     openApps.push(testApp)
 
@@ -60,6 +98,7 @@ describe('email auth routes', () => {
   })
 
   it('email/start returns 503 smtp_not_configured when no active smtp exists', async () => {
+    otpSeam.current = createOtpMailSeam()
     const testApp = await createTestApp({ smtpConfigs: [] })
     openApps.push(testApp)
 
@@ -74,9 +113,10 @@ describe('email auth routes', () => {
   })
 
   it('email/start invalidates the pending otp if smtp send fails', async () => {
+    otpSeam.current = createOtpMailSeam()
     const testApp = await createTestApp()
     openApps.push(testApp)
-    testApp.failNextMail()
+    otpSeam.current.failNextSend()
 
     const response = await testApp.app.request('/email/start', {
       method: 'POST',
@@ -96,6 +136,7 @@ describe('email auth routes', () => {
   })
 
   it('verify creates a user when the email is first seen', async () => {
+    otpSeam.current = createOtpMailSeam()
     const testApp = await createTestApp()
     openApps.push(testApp)
 
@@ -105,7 +146,10 @@ describe('email auth routes', () => {
       body: json({ email: 'first@example.com' })
     })
 
-    const code = extractOtpCode(testApp.mailbox[0]?.text ?? '')
+    const code = extractOtpCode(
+      findLatestOtpMail(otpSeam.current.mailbox, 'first@example.com')?.text ??
+        ''
+    )
     const response = await testApp.app.request('/email/verify', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -127,6 +171,7 @@ describe('email auth routes', () => {
   })
 
   it('verify signs in an existing user without creating a duplicate', async () => {
+    otpSeam.current = createOtpMailSeam()
     const testApp = await createTestApp()
     openApps.push(testApp)
 
@@ -142,7 +187,10 @@ describe('email auth routes', () => {
       body: json({ email: 'existing@example.com' })
     })
 
-    const code = extractOtpCode(testApp.mailbox[0]?.text ?? '')
+    const code = extractOtpCode(
+      findLatestOtpMail(otpSeam.current.mailbox, 'existing@example.com')
+        ?.text ?? ''
+    )
     const response = await testApp.app.request('/email/verify', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -158,6 +206,7 @@ describe('email auth routes', () => {
   })
 
   it('verify rejects expired otp', async () => {
+    otpSeam.current = createOtpMailSeam()
     const testApp = await createTestApp()
     openApps.push(testApp)
 
@@ -182,6 +231,7 @@ describe('email auth routes', () => {
   })
 
   it('verify rejects replayed otp', async () => {
+    otpSeam.current = createOtpMailSeam()
     const testApp = await createTestApp()
     openApps.push(testApp)
 
@@ -191,7 +241,10 @@ describe('email auth routes', () => {
       body: json({ email: 'replay@example.com' })
     })
 
-    const code = extractOtpCode(testApp.mailbox[0]?.text ?? '')
+    const code = extractOtpCode(
+      findLatestOtpMail(otpSeam.current.mailbox, 'replay@example.com')?.text ??
+        ''
+    )
 
     const firstResponse = await testApp.app.request('/email/verify', {
       method: 'POST',

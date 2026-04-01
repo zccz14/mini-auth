@@ -2,7 +2,6 @@ import { createServer } from 'node:http'
 import type { IncomingHttpHeaders } from 'node:http'
 import { parseRuntimeConfig } from '../shared/config.js'
 import { createDatabaseClient } from '../infra/db/client.js'
-import { createRuntimeSmtpTransport } from '../infra/smtp/mailer.js'
 import { bootstrapKeys } from '../modules/jwks/service.js'
 import { createApp } from '../server/app.js'
 
@@ -18,8 +17,7 @@ export async function runStartCommand(
     db,
     issuer: config.issuer,
     origins: config.origins,
-    rpId: config.rpId,
-    smtpTransport: createRuntimeSmtpTransport()
+    rpId: config.rpId
   })
 
   const server = createServer(async (req, res) => {

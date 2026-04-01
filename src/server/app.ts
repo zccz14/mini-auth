@@ -1,7 +1,6 @@
 import { Hono } from 'hono'
 import type { ZodType } from 'zod'
 import type { DatabaseClient } from '../infra/db/client.js'
-import type { SmtpTransport } from '../infra/smtp/mailer.js'
 import { listPublicKeys } from '../modules/jwks/service.js'
 import {
   InvalidEmailOtpError,
@@ -57,13 +56,6 @@ type AppVariables = AuthVariables & {
   issuer: string
   origins: string[]
   rpId: string
-  smtpTransport: SmtpTransport
-}
-
-const failingSmtpTransport: SmtpTransport = {
-  async send(): Promise<void> {
-    throw new Error('SMTP transport is not configured')
-  }
 }
 
 export function createApp(input: {
@@ -71,7 +63,6 @@ export function createApp(input: {
   issuer: string
   origins: string[]
   rpId: string
-  smtpTransport?: SmtpTransport
 }) {
   const app = new Hono<{ Variables: AppVariables }>()
 
@@ -80,7 +71,6 @@ export function createApp(input: {
     c.set('issuer', input.issuer)
     c.set('origins', input.origins)
     c.set('rpId', input.rpId)
-    c.set('smtpTransport', input.smtpTransport ?? failingSmtpTransport)
     await next()
   })
 
@@ -94,10 +84,7 @@ export function createApp(input: {
 
   app.post('/email/start', async (c) => {
     const body = await parseJson(c.req.raw, emailStartSchema)
-    const result = await startEmailAuth(c.var.db, {
-      email: body.email,
-      smtpTransport: c.var.smtpTransport
-    })
+    const result = await startEmailAuth(c.var.db, { email: body.email })
 
     return c.json(result)
   })

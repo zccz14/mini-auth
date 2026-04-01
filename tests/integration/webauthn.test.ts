@@ -1,9 +1,41 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import type { OtpMailSeam } from '../helpers/mock-smtp.js'
+
+const otpSeam = vi.hoisted(() => ({ current: null as OtpMailSeam | null }))
+
+vi.mock('../../src/infra/smtp/mailer.js', async () => {
+  const actual = await vi.importActual<
+    typeof import('../../src/infra/smtp/mailer.js')
+  >('../../src/infra/smtp/mailer.js')
+
+  return {
+    ...actual,
+    async sendOtpMail(config: unknown, email: string, code: string) {
+      const seam = otpSeam.current
+
+      if (!seam) {
+        throw new Error('OTP seam not installed for webauthn tests')
+      }
+
+      return seam.sendOtpMail(
+        config as { fromEmail: string; fromName?: string },
+        email,
+        code
+      )
+    }
+  }
+})
+
 import { createDatabaseClient } from '../../src/infra/db/client.js'
 import { mintSessionTokens } from '../../src/modules/session/service.js'
 import { consumeChallengeAndUpdateCredentialCounter } from '../../src/modules/webauthn/repo.js'
 import { createTestApp } from '../helpers/app.js'
-import { extractOtpCode } from '../helpers/mock-smtp.js'
+import {
+  createOtpMailSeam,
+  extractOtpCode,
+  findLatestOtpMail
+} from '../helpers/mock-smtp.js'
 import { createTestPasskey } from '../helpers/webauthn.js'
 
 const json = (value: unknown) => JSON.stringify(value)
@@ -13,6 +45,7 @@ const openApps: Array<{ close(): void }> = []
 
 afterEach(() => {
   vi.useRealTimers()
+  otpSeam.current = null
 
   while (openApps.length > 0) {
     openApps.pop()?.close()
@@ -519,6 +552,7 @@ describe('webauthn routes', () => {
 })
 
 async function createSignedInApp(email: string) {
+  otpSeam.current = createOtpMailSeam()
   const testApp = await createTestApp()
 
   return signInOnExistingApp(testApp, email)
@@ -528,13 +562,15 @@ async function signInOnExistingApp(
   testApp: Awaited<ReturnType<typeof createTestApp>>,
   email: string
 ) {
+  const seam = getOrCreateOtpSeam()
+
   await testApp.app.request('/email/start', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: json({ email })
   })
 
-  const latestMail = testApp.mailbox[testApp.mailbox.length - 1]
+  const latestMail = findLatestOtpMail(seam.mailbox, email)
   const code = extractOtpCode(latestMail?.text ?? '')
   const verifyResponse = await testApp.app.request('/email/verify', {
     method: 'POST',
@@ -554,6 +590,14 @@ async function signInOnExistingApp(
     tokens,
     userId: user.id
   }
+}
+
+function getOrCreateOtpSeam(): OtpMailSeam {
+  if (!otpSeam.current) {
+    otpSeam.current = createOtpMailSeam()
+  }
+
+  return otpSeam.current
 }
 
 function authHeaders(accessToken: string): Record<string, string> {

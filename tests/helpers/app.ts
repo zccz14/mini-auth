@@ -3,7 +3,6 @@ import { createDatabaseClient } from '../../src/infra/db/client.js'
 import { createApp } from '../../src/server/app.js'
 import { bootstrapKeys } from '../../src/modules/jwks/service.js'
 import { createTempDbPath } from './db.js'
-import { createMockSmtp } from './mock-smtp.js'
 
 type CreateTestAppOptions = {
   smtpConfigs?: Array<{
@@ -23,7 +22,6 @@ export async function createTestApp(options: CreateTestAppOptions = {}) {
   const dbPath = await createTempDbPath()
   await bootstrapDatabase(dbPath)
   const db = createDatabaseClient(dbPath)
-  const smtp = createMockSmtp()
 
   await bootstrapKeys(db)
 
@@ -65,16 +63,13 @@ export async function createTestApp(options: CreateTestAppOptions = {}) {
     db,
     issuer: 'https://issuer.example',
     origins: ['https://app.example.com'],
-    rpId: 'example.com',
-    smtpTransport: smtp.transport
+    rpId: 'example.com'
   })
 
   return {
     app,
     db,
     dbPath,
-    mailbox: smtp.mailbox,
-    failNextMail: smtp.failNextSend,
     close() {
       db.close()
     }

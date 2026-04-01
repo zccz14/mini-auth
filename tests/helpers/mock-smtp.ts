@@ -7,30 +7,68 @@ export type MockMail = {
   text: string
 }
 
-export type MockSmtpTransport = {
-  send(_config: unknown, message: MockMail): Promise<void>
+type MockSmtpConfig = {
+  fromEmail: string
+  fromName?: string
 }
 
-export function createMockSmtp() {
+export type OtpMailSeam = {
+  mailbox: MockMail[]
+  failNextSend(): void
+  reset(): void
+  sendOtpMail(
+    config: MockSmtpConfig,
+    email: string,
+    code: string
+  ): Promise<void>
+}
+
+export function createOtpMailSeam(): OtpMailSeam {
   const mailbox: MockMail[] = []
-  let failNext = false
+  let failNextSend = false
 
   return {
     mailbox,
     failNextSend() {
-      failNext = true
+      failNextSend = true
     },
-    transport: {
-      async send(_config: unknown, message: MockMail): Promise<void> {
-        if (failNext) {
-          failNext = false
-          throw new Error('Mock SMTP send failed')
-        }
-
-        mailbox.push(message)
+    reset() {
+      mailbox.length = 0
+      failNextSend = false
+    },
+    async sendOtpMail(
+      config: MockSmtpConfig,
+      email: string,
+      code: string
+    ): Promise<void> {
+      if (failNextSend) {
+        failNextSend = false
+        throw new Error('Mock SMTP send failed')
       }
-    } satisfies MockSmtpTransport
+
+      mailbox.push({
+        from: formatFromAddress(config),
+        to: email,
+        subject: 'Your mini-auth verification code',
+        text: `Your verification code is ${code}. It expires in 10 minutes.`
+      })
+    }
   }
+}
+
+export function findLatestOtpMail(
+  mailbox: readonly MockMail[],
+  email?: string
+): MockMail | undefined {
+  for (let index = mailbox.length - 1; index >= 0; index -= 1) {
+    const mail = mailbox[index]
+
+    if (mail && (!email || mail.to === email)) {
+      return mail
+    }
+  }
+
+  return undefined
 }
 
 export function extractOtpCode(text: string): string {
@@ -178,6 +216,12 @@ function writeResponses(
   lines: string[]
 ): void {
   socket.write(`${lines.join('\r\n')}\r\n`)
+}
+
+function formatFromAddress(config: MockSmtpConfig): string {
+  return config.fromName
+    ? `${config.fromName} <${config.fromEmail}>`
+    : config.fromEmail
 }
 
 function extractAddress(line: string): string {

@@ -2,7 +2,9 @@ import { mkdtemp, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import type { OtpMailSeam } from '../helpers/mock-smtp.js'
 import { bootstrapDatabase } from '../../src/infra/db/bootstrap.js'
 import { createDatabaseClient } from '../../src/infra/db/client.js'
 import { importSmtpConfigs } from '../../src/infra/smtp/config-import.js'
@@ -12,19 +14,25 @@ import {
   createSession,
   revokeSessionByRefreshTokenHash
 } from '../../src/modules/session/repo.js'
-import { createTestApp } from '../helpers/app.js'
 import { createTempDbPath } from '../helpers/db.js'
 import {
+  createOtpMailSeam,
   extractOtpCode,
+  findLatestOtpMail,
   startConfigurableMockSmtpServer,
   startMockSmtpServer
 } from '../helpers/mock-smtp.js'
 
 const json = (value: unknown) => JSON.stringify(value)
+const otpSeam = { current: null as OtpMailSeam | null }
 
 const openApps: Array<{ close(): void }> = []
 
 afterEach(() => {
+  vi.doUnmock('../../src/infra/smtp/mailer.js')
+  vi.resetModules()
+  otpSeam.current = null
+
   while (openApps.length > 0) {
     openApps.pop()?.close()
   }
@@ -404,7 +412,10 @@ describe('session routes', () => {
 })
 
 async function createSignedInApp(email: string) {
+  otpSeam.current = createOtpMailSeam()
+  const { createTestApp } = await loadMockedAppHelpers()
   const testApp = await createTestApp()
+  const seam = getCurrentOtpSeam()
 
   await testApp.app.request('/email/start', {
     method: 'POST',
@@ -412,7 +423,9 @@ async function createSignedInApp(email: string) {
     body: json({ email })
   })
 
-  const code = extractOtpCode(testApp.mailbox[0]?.text ?? '')
+  const code = extractOtpCode(
+    findLatestOtpMail(seam.mailbox, email)?.text ?? ''
+  )
   const verifyResponse = await testApp.app.request('/email/verify', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -438,6 +451,42 @@ async function createSignedInApp(email: string) {
     userId: user.id,
     sessionId: session.id
   }
+}
+
+function getCurrentOtpSeam(): OtpMailSeam {
+  if (!otpSeam.current) {
+    throw new Error('OTP seam not installed for session tests')
+  }
+
+  return otpSeam.current
+}
+
+async function loadMockedAppHelpers() {
+  vi.resetModules()
+  vi.doMock('../../src/infra/smtp/mailer.js', async () => {
+    const actual = await vi.importActual<
+      typeof import('../../src/infra/smtp/mailer.js')
+    >('../../src/infra/smtp/mailer.js')
+
+    return {
+      ...actual,
+      async sendOtpMail(config: unknown, email: string, code: string) {
+        const seam = otpSeam.current
+
+        if (!seam) {
+          throw new Error('OTP seam not installed for session tests')
+        }
+
+        return seam.sendOtpMail(
+          config as { fromEmail: string; fromName?: string },
+          email,
+          code
+        )
+      }
+    }
+  })
+
+  return import('../helpers/app.js')
 }
 
 async function writeRuntimeSmtpConfigJson(row: {

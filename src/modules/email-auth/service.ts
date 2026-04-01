@@ -3,8 +3,7 @@ import type { DatabaseClient } from '../../infra/db/client.js'
 import {
   listSmtpConfigs,
   selectSmtpConfig,
-  sendOtpMail,
-  type SmtpTransport
+  sendOtpMail
 } from '../../infra/smtp/mailer.js'
 import { hashValue } from '../../shared/crypto.js'
 import {
@@ -45,7 +44,7 @@ export class InvalidEmailOtpError extends Error {
 
 export async function startEmailAuth(
   db: DatabaseClient,
-  input: { email: string; smtpTransport: SmtpTransport }
+  input: { email: string }
 ): Promise<{ ok: true }> {
   const email = normalizeEmail(input.email)
   const smtpConfig = selectSmtpConfig(listSmtpConfigs(db))
@@ -65,7 +64,7 @@ export async function startEmailAuth(
   })
 
   try {
-    await sendOtpMail(input.smtpTransport, smtpConfig, email, code)
+    await sendOtpMail(smtpConfig, email, code)
   } catch {
     invalidateEmailOtp(db, email, new Date().toISOString())
     throw new SmtpDeliveryError()
