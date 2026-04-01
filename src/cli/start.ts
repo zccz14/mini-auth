@@ -1,10 +1,14 @@
 import { createServer } from 'node:http'
-import type { IncomingHttpHeaders } from 'node:http'
+import type {
+  IncomingHttpHeaders,
+  IncomingMessage,
+  ServerResponse
+} from 'node:http'
 import { parseRuntimeConfig } from '../shared/config.js'
 import { createDatabaseClient } from '../infra/db/client.js'
 import { bootstrapKeys } from '../modules/jwks/service.js'
 import { createApp } from '../server/app.js'
-import { createRootLogger } from '../shared/logger.js'
+import { createRootLogger, withErrorFields } from '../shared/logger.js'
 
 type StartCommandInput = {
   loggerSink?: { write(line: string): void }
@@ -19,25 +23,80 @@ export async function runStartCommand(
     db_path: config.dbPath
   })
   const db = createDatabaseClient(config.dbPath)
+  try {
+    logger.info({ event: 'cli.start.started' }, 'Starting mini-auth server')
 
-  logger.info({ event: 'cli.start.started' }, 'Starting mini-auth server')
+    await bootstrapKeys(db)
 
-  await bootstrapKeys(db)
+    const clientIps = new WeakMap<Request, string | null>()
 
-  const clientIps = new WeakMap<Request, string | null>()
+    const app = createApp({
+      db,
+      getClientIp(request) {
+        return clientIps.get(request) ?? null
+      },
+      issuer: config.issuer,
+      logger,
+      origins: config.origins,
+      rpId: config.rpId
+    })
 
-  const app = createApp({
-    db,
-    getClientIp(request) {
-      return clientIps.get(request) ?? null
-    },
-    issuer: config.issuer,
-    logger,
-    origins: config.origins,
-    rpId: config.rpId
-  })
+    const server = createServer((req, res) => {
+      void handleRequest({ app, clientIps, config, logger, req, res })
+    })
 
-  const server = createServer(async (req, res) => {
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject)
+      server.listen(config.port, config.host, () => {
+        server.off('error', reject)
+        logger.info(
+          {
+            event: 'server.listening',
+            host: config.host,
+            port: config.port
+          },
+          'mini-auth server listening'
+        )
+        resolve()
+      })
+    })
+
+    return {
+      async close() {
+        await new Promise<void>((resolve, reject) => {
+          server.close((error) => {
+            if (error) {
+              reject(error)
+              return
+            }
+
+            db.close()
+            logger.info(
+              { event: 'server.shutdown.completed' },
+              'mini-auth server shutdown complete'
+            )
+            resolve()
+          })
+        })
+      }
+    }
+  } catch (error) {
+    db.close()
+    throw error
+  }
+}
+
+async function handleRequest(input: {
+  app: Pick<ReturnType<typeof createApp>, 'fetch'>
+  clientIps: WeakMap<Request, string | null>
+  config: ReturnType<typeof parseRuntimeConfig>
+  logger: ReturnType<typeof createRootLogger>
+  req: IncomingMessage
+  res: ServerResponse<IncomingMessage>
+}): Promise<void> {
+  const { app, clientIps, config, logger, req, res } = input
+
+  try {
     const origin = `http://${req.headers.host ?? `${config.host}:${config.port}`}`
     const request = new Request(new URL(req.url ?? '/', origin), {
       method: req.method,
@@ -56,42 +115,21 @@ export async function runStartCommand(
     })
     const body = Buffer.from(await response.arrayBuffer())
     res.end(body)
-  })
+  } catch (error) {
+    logger.error(
+      {
+        event: 'server.request.failed',
+        ...withErrorFields(error)
+      },
+      'HTTP request handling failed'
+    )
 
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(config.port, config.host, () => {
-      server.off('error', reject)
-      logger.info(
-        {
-          event: 'server.listening',
-          host: config.host,
-          port: config.port
-        },
-        'mini-auth server listening'
-      )
-      resolve()
-    })
-  })
-
-  return {
-    async close() {
-      await new Promise<void>((resolve, reject) => {
-        server.close((error) => {
-          if (error) {
-            reject(error)
-            return
-          }
-
-          db.close()
-          logger.info(
-            { event: 'server.shutdown.completed' },
-            'mini-auth server shutdown complete'
-          )
-          resolve()
-        })
-      })
+    if (!res.headersSent) {
+      res.statusCode = 500
+      res.setHeader('content-type', 'application/json')
     }
+
+    res.end(JSON.stringify({ error: 'internal_server_error' }))
   }
 }
 

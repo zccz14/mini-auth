@@ -4,35 +4,48 @@ import { runCreateCommand } from '../../src/cli/create.js'
 import { runRotateJwksCommand } from '../../src/cli/rotate-jwks.js'
 import { createMemoryLogCollector, type LogEntry } from './logging.js'
 
+let buildPromise: Promise<void> | null = null
+
+export async function ensureCliIsBuilt(): Promise<void> {
+  if (!buildPromise) {
+    buildPromise = runCommand('npm', ['run', 'build']).then((result) => {
+      if (result.exitCode !== 0) {
+        throw new Error(result.stderr || result.stdout || 'CLI build failed')
+      }
+    })
+  }
+
+  await buildPromise
+}
+
 export async function runCli(
   args: string[]
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const cliEntrypoint = resolve(process.cwd(), 'dist/index.js')
 
-  return new Promise((resolveRun, reject) => {
-    const child = spawn(process.execPath, [cliEntrypoint, ...args], {
-      cwd: process.cwd(),
-      stdio: ['ignore', 'pipe', 'pipe']
-    })
+  return runCommand(process.execPath, [cliEntrypoint, ...args])
+}
 
-    let stdout = ''
-    let stderr = ''
+export async function runLoggedCli(
+  args: string[]
+): Promise<{
+  exitCode: number
+  stdout: string
+  stderr: string
+  logs: LogEntry[]
+}> {
+  await ensureCliIsBuilt()
 
-    child.stdout.on('data', (chunk: Buffer) => {
-      stdout += chunk.toString()
-    })
-    child.stderr.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString()
-    })
-    child.on('error', reject)
-    child.on('close', (code) => {
-      resolveRun({
-        exitCode: code ?? 1,
-        stdout,
-        stderr
-      })
-    })
-  })
+  const result = await runCli(args)
+
+  return {
+    ...result,
+    logs: result.stdout
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .map((line) => JSON.parse(line) as LogEntry)
+  }
 }
 
 export async function runLoggedCreateCommand(input: {
@@ -64,4 +77,34 @@ export async function runLoggedRotateJwksCommand(input: {
   return {
     logs: logCollector.entries
   }
+}
+
+async function runCommand(
+  command: string,
+  args: string[]
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  return new Promise((resolveRun, reject) => {
+    const child = spawn(command, args, {
+      cwd: process.cwd(),
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+
+    let stdout = ''
+    let stderr = ''
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString()
+    })
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString()
+    })
+    child.on('error', reject)
+    child.on('close', (code) => {
+      resolveRun({
+        exitCode: code ?? 1,
+        stdout,
+        stderr
+      })
+    })
+  })
 }

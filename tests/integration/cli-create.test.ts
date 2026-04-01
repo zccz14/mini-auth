@@ -1,55 +1,11 @@
-import { spawn } from 'node:child_process'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createDatabaseClient } from '../../src/infra/db/client.js'
-import { runCli } from '../helpers/cli.js'
+import { ensureCliIsBuilt, runCli } from '../helpers/cli.js'
 import { countRows, createTempDbPath } from '../helpers/db.js'
 import { exists } from '../helpers/fs.js'
-
-let buildPromise: Promise<void> | null = null
-
-async function ensureCliIsBuilt(): Promise<void> {
-  if (!buildPromise) {
-    buildPromise = runCommand('npm', ['run', 'build']).then((result) => {
-      if (result.exitCode !== 0) {
-        throw new Error(result.stderr || result.stdout || 'CLI build failed')
-      }
-    })
-  }
-
-  await buildPromise
-}
-
-async function runCommand(command: string, args: string[]) {
-  return new Promise<{ exitCode: number; stdout: string; stderr: string }>(
-    (resolve, reject) => {
-      const child = spawn(command, args, {
-        cwd: process.cwd(),
-        stdio: ['ignore', 'pipe', 'pipe']
-      })
-
-      let stdout = ''
-      let stderr = ''
-
-      child.stdout.on('data', (chunk: Buffer) => {
-        stdout += chunk.toString()
-      })
-      child.stderr.on('data', (chunk: Buffer) => {
-        stderr += chunk.toString()
-      })
-      child.on('error', reject)
-      child.on('close', (code) => {
-        resolve({
-          exitCode: code ?? 1,
-          stdout,
-          stderr
-        })
-      })
-    }
-  )
-}
 
 describe('workspace bootstrap', () => {
   it('exposes the mini-auth bin entry', async () => {
