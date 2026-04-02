@@ -187,14 +187,11 @@ export async function verifyRegistration(
       clientExtensionResults: input.credential.clientExtensionResults ?? {},
     };
 
-    const verification = await verifySimpleWebAuthnRegistrationResponse({
-      response: credential as Parameters<
-        typeof verifySimpleWebAuthnRegistrationResponse
-      >[0]['response'],
+    const verification = await verifyRegistrationResponse({
+      credential,
       expectedChallenge: challenge.challenge,
       expectedOrigin: input.origins,
       expectedRPID: input.rpId,
-      requireUserVerification: false,
     });
 
     if (!verification.verified || !verification.registrationInfo) {
@@ -243,7 +240,7 @@ export async function verifyRegistration(
       throw error;
     }
 
-    throw new InvalidWebauthnRegistrationError();
+    throw error;
   }
 
   return { ok: true };
@@ -328,29 +325,12 @@ export async function verifyAuthentication(
       throw new InvalidWebauthnAuthenticationError();
     }
 
-    const verification = await verifySimpleWebAuthnAuthenticationResponse({
-      response: {
-        ...input.credential,
-        response: {
-          ...input.credential.response,
-          userHandle: input.credential.response.userHandle ?? undefined,
-        },
-        clientExtensionResults: {},
-      } as Parameters<
-        typeof verifySimpleWebAuthnAuthenticationResponse
-      >[0]['response'],
+    const verification = await verifyAuthenticationResponse({
+      credential: input.credential,
       expectedChallenge: challenge.challenge,
       expectedOrigin: input.origins,
       expectedRPID: input.rpId,
-      credential: {
-        id: storedCredential.credentialId,
-        publicKey: Uint8Array.from(decodeBase64Url(storedCredential.publicKey)),
-        counter: storedCredential.counter,
-        transports: storedCredential.transports as Parameters<
-          typeof verifySimpleWebAuthnAuthenticationResponse
-        >[0]['credential']['transports'],
-      },
-      requireUserVerification: false,
+      storedCredential,
     });
 
     if (!verification.verified) {
@@ -401,6 +381,68 @@ export async function verifyAuthentication(
       throw error;
     }
 
+    throw error;
+  }
+}
+
+async function verifyRegistrationResponse(input: {
+  credential: RegistrationCredential & {
+    clientExtensionResults: Record<string, unknown>;
+  };
+  expectedChallenge: string;
+  expectedOrigin: string[];
+  expectedRPID: string;
+}) {
+  try {
+    return await verifySimpleWebAuthnRegistrationResponse({
+      response: input.credential as Parameters<
+        typeof verifySimpleWebAuthnRegistrationResponse
+      >[0]['response'],
+      expectedChallenge: input.expectedChallenge,
+      expectedOrigin: input.expectedOrigin,
+      expectedRPID: input.expectedRPID,
+      requireUserVerification: false,
+    });
+  } catch {
+    throw new InvalidWebauthnRegistrationError();
+  }
+}
+
+async function verifyAuthenticationResponse(input: {
+  credential: AuthenticationCredential;
+  expectedChallenge: string;
+  expectedOrigin: string[];
+  expectedRPID: string;
+  storedCredential: NonNullable<ReturnType<typeof getCredentialByCredentialId>>;
+}) {
+  try {
+    return await verifySimpleWebAuthnAuthenticationResponse({
+      response: {
+        ...input.credential,
+        response: {
+          ...input.credential.response,
+          userHandle: input.credential.response.userHandle ?? undefined,
+        },
+        clientExtensionResults: {},
+      } as Parameters<
+        typeof verifySimpleWebAuthnAuthenticationResponse
+      >[0]['response'],
+      expectedChallenge: input.expectedChallenge,
+      expectedOrigin: input.expectedOrigin,
+      expectedRPID: input.expectedRPID,
+      credential: {
+        id: input.storedCredential.credentialId,
+        publicKey: Uint8Array.from(
+          decodeBase64Url(input.storedCredential.publicKey),
+        ),
+        counter: input.storedCredential.counter,
+        transports: input.storedCredential.transports as Parameters<
+          typeof verifySimpleWebAuthnAuthenticationResponse
+        >[0]['credential']['transports'],
+      },
+      requireUserVerification: false,
+    });
+  } catch {
     throw new InvalidWebauthnAuthenticationError();
   }
 }
