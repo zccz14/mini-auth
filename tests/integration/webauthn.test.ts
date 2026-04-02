@@ -28,9 +28,6 @@ vi.mock('../../src/infra/smtp/mailer.js', async () => {
   };
 });
 
-import { createDatabaseClient } from '../../src/infra/db/client.js';
-import { mintSessionTokens } from '../../src/modules/session/service.js';
-import { consumeChallengeAndUpdateCredentialCounter } from '../../src/modules/webauthn/repo.js';
 import { createTestApp } from '../helpers/app.js';
 import {
   createOtpMailSeam,
@@ -528,6 +525,7 @@ describe('webauthn routes', () => {
     const testApp = await createSignedInApp('webauthn-race@example.com');
     openApps.push(testApp);
     const passkey = await registerPasskey(testApp, 'webauthn-race@example.com');
+    const initialSessionCount = countSessionsForUser(testApp, testApp.userId);
     const [firstOptions, secondOptions] = await Promise.all([
       getAuthOptions(testApp),
       getAuthOptions(testApp),
@@ -542,60 +540,35 @@ describe('webauthn routes', () => {
       origin,
       1,
     );
-    const credential = testApp.db
-      .prepare('SELECT id, user_id, counter FROM webauthn_credentials LIMIT 1')
-      .get() as { id: string; user_id: string; counter: number };
-    const writerDb = createDatabaseClient(testApp.dbPath);
-    const readerDb = createDatabaseClient(testApp.dbPath);
+    const [firstResponse, secondResponse] = await Promise.all([
+      verifyAuth(testApp, firstOptions.request_id, firstAssertion),
+      verifyAuth(testApp, secondOptions.request_id, secondAssertion),
+    ]);
+    const firstBody = await firstResponse.json();
+    const secondBody = await secondResponse.json();
+    const statuses = [firstResponse.status, secondResponse.status].sort();
+    const finalSessionCount = countSessionsForUser(testApp, testApp.userId);
+    const storedCredential = testApp.db
+      .prepare('SELECT counter FROM webauthn_credentials WHERE user_id = ?')
+      .get(testApp.userId) as { counter: number };
 
-    try {
-      const firstClaim = consumeChallengeAndUpdateCredentialCounter(writerDb, {
-        requestId: firstOptions.request_id,
-        credentialId: credential.id,
-        expectedCounter: credential.counter,
-        nextCounter: 1,
-        now: '2030-01-01T00:00:00.000Z',
-      });
-      const secondClaim = consumeChallengeAndUpdateCredentialCounter(readerDb, {
-        requestId: secondOptions.request_id,
-        credentialId: credential.id,
-        expectedCounter: credential.counter,
-        nextCounter: 1,
-        now: '2030-01-01T00:00:01.000Z',
-      });
-
-      if (firstClaim) {
-        await mintSessionTokens(writerDb, {
-          userId: credential.user_id,
-          issuer: 'https://issuer.example',
-        });
-      }
-
-      if (secondClaim) {
-        await mintSessionTokens(readerDb, {
-          userId: credential.user_id,
-          issuer: 'https://issuer.example',
-        });
-      }
-
-      const sessions = testApp.db
-        .prepare('SELECT id FROM sessions WHERE user_id = ?')
-        .all(credential.user_id) as Array<{ id: string }>;
-      const storedCredential = testApp.db
-        .prepare('SELECT counter FROM webauthn_credentials WHERE id = ?')
-        .get(credential.id) as { counter: number };
-
-      expect(firstAssertion.response.signature).not.toBe(
-        secondAssertion.response.signature,
-      );
-      expect(firstClaim).toBe(true);
-      expect(secondClaim).toBe(false);
-      expect(sessions).toHaveLength(2);
-      expect(storedCredential.counter).toBe(1);
-    } finally {
-      writerDb.close();
-      readerDb.close();
-    }
+    expect(firstAssertion.response.signature).not.toBe(
+      secondAssertion.response.signature,
+    );
+    expect(statuses).toEqual([200, 400]);
+    expect([firstBody, secondBody]).toContainEqual(
+      expect.objectContaining({
+        access_token: expect.any(String),
+        token_type: 'Bearer',
+        expires_in: 900,
+        refresh_token: expect.any(String),
+      }),
+    );
+    expect([firstBody, secondBody]).toContainEqual({
+      error: 'invalid_webauthn_authentication',
+    });
+    expect(finalSessionCount - initialSessionCount).toBe(1);
+    expect(storedCredential.counter).toBe(1);
   });
 });
 
@@ -707,6 +680,17 @@ async function verifyAuth(
     headers: { 'content-type': 'application/json' },
     body: json({ request_id: requestId, credential }),
   });
+}
+
+function countSessionsForUser(
+  testApp: Awaited<ReturnType<typeof createSignedInApp>>,
+  userId: string,
+) {
+  const result = testApp.db
+    .prepare('SELECT COUNT(*) as count FROM sessions WHERE user_id = ?')
+    .get(userId) as { count: number };
+
+  return result.count;
 }
 
 function expectLogEntry(
