@@ -1,14 +1,9 @@
 import {
   generateAuthenticationOptions as generateSimpleWebAuthnAuthenticationOptions,
   generateRegistrationOptions as generateSimpleWebAuthnRegistrationOptions,
+  verifyAuthenticationResponse as verifySimpleWebAuthnAuthenticationResponse,
   verifyRegistrationResponse as verifySimpleWebAuthnRegistrationResponse,
 } from '@simplewebauthn/server';
-import {
-  createHash,
-  createPublicKey,
-  verify,
-  type JsonWebKey,
-} from 'node:crypto';
 import type { DatabaseClient } from '../../infra/db/client.js';
 import { decodeBase64Url, encodeBase64Url } from '../../shared/crypto.js';
 import type { AppLogger } from '../../shared/logger.js';
@@ -24,13 +19,6 @@ import {
   getChallengeByRequestId,
   getCredentialByCredentialId,
 } from './repo.js';
-
-type JsonWebKeyWithCurve = JsonWebKey & {
-  crv: 'P-256';
-  kty: 'EC';
-  x: string;
-  y: string;
-};
 
 type ParsedCredential = {
   id: string;
@@ -54,14 +42,6 @@ type AuthenticationCredential = ParsedCredential & {
     signature: string;
     userHandle?: string | null;
   };
-};
-
-type ParsedAuthenticatorData = {
-  rpIdHash: Buffer;
-  flags: number;
-  counter: number;
-  credentialId?: Buffer;
-  credentialPublicKey?: Buffer;
 };
 
 export class InvalidWebauthnRegistrationError extends Error {
@@ -342,21 +322,41 @@ export async function verifyAuthentication(
       throw new InvalidWebauthnAuthenticationError();
     }
 
-    const nextCounter = verifyAuthenticationResponse(
-      input.credential,
-      challenge.challenge,
-      input.rpId,
-      input.origins,
-      JSON.parse(storedCredential.publicKey) as JsonWebKeyWithCurve,
-      storedCredential.counter,
-    );
+    const verification = await verifySimpleWebAuthnAuthenticationResponse({
+      response: {
+        ...input.credential,
+        response: {
+          ...input.credential.response,
+          userHandle: input.credential.response.userHandle ?? undefined,
+        },
+        clientExtensionResults: {},
+      } as Parameters<
+        typeof verifySimpleWebAuthnAuthenticationResponse
+      >[0]['response'],
+      expectedChallenge: challenge.challenge,
+      expectedOrigin: input.origins,
+      expectedRPID: input.rpId,
+      credential: {
+        id: storedCredential.credentialId,
+        publicKey: Uint8Array.from(decodeBase64Url(storedCredential.publicKey)),
+        counter: storedCredential.counter,
+        transports: storedCredential.transports as Parameters<
+          typeof verifySimpleWebAuthnAuthenticationResponse
+        >[0]['credential']['transports'],
+      },
+      requireUserVerification: false,
+    });
+
+    if (!verification.verified) {
+      throw new InvalidWebauthnAuthenticationError();
+    }
 
     if (
       !consumeChallengeAndUpdateCredentialCounter(db, {
         requestId: challenge.requestId,
         credentialId: storedCredential.id,
         expectedCounter: storedCredential.counter,
-        nextCounter,
+        nextCounter: verification.authenticationInfo.newCounter,
         now: new Date().toISOString(),
       })
     ) {
@@ -390,7 +390,12 @@ export async function verifyAuthentication(
       },
       'WebAuthn authentication failed',
     );
-    throw error;
+
+    if (error instanceof InvalidWebauthnAuthenticationError) {
+      throw error;
+    }
+
+    throw new InvalidWebauthnAuthenticationError();
   }
 }
 
@@ -403,66 +408,6 @@ export function deleteCredential(
   }
 
   return { ok: true };
-}
-
-function verifyAuthenticationResponse(
-  credential: AuthenticationCredential,
-  expectedChallenge: string,
-  expectedRpId: string,
-  expectedOrigins: string[],
-  publicKey: JsonWebKeyWithCurve,
-  storedCounter: number,
-): number {
-  try {
-    validateCredentialEnvelope(credential, InvalidWebauthnAuthenticationError);
-
-    if (credential.id !== encodeBase64Url(decodeBase64Url(credential.rawId))) {
-      throw new InvalidWebauthnAuthenticationError();
-    }
-
-    const clientDataJSON = decodeBase64Url(credential.response.clientDataJSON);
-    validateClientData(
-      clientDataJSON,
-      'webauthn.get',
-      expectedChallenge,
-      expectedOrigins,
-      InvalidWebauthnAuthenticationError,
-    );
-    const authenticatorData = decodeBase64Url(
-      credential.response.authenticatorData,
-    );
-    const parsedAuthData = parseAuthenticatorData(authenticatorData, false);
-
-    validateRpIdHash(
-      parsedAuthData.rpIdHash,
-      expectedRpId,
-      InvalidWebauthnAuthenticationError,
-    );
-    ensureFlag(parsedAuthData.flags, 0x01, InvalidWebauthnAuthenticationError);
-
-    if (storedCounter > 0 && parsedAuthData.counter <= storedCounter) {
-      throw new InvalidWebauthnAuthenticationError();
-    }
-
-    const verified = verify(
-      'sha256',
-      Buffer.concat([authenticatorData, sha256(clientDataJSON)]),
-      createPublicKey({ format: 'jwk', key: publicKey as JsonWebKey }),
-      decodeBase64Url(credential.response.signature),
-    );
-
-    if (!verified) {
-      throw new InvalidWebauthnAuthenticationError();
-    }
-
-    return parsedAuthData.counter;
-  } catch (error) {
-    if (error instanceof InvalidWebauthnAuthenticationError) {
-      throw error;
-    }
-
-    throw new InvalidWebauthnAuthenticationError();
-  }
 }
 
 function getValidChallenge(
@@ -489,107 +434,6 @@ function getValidChallenge(
   return challenge;
 }
 
-function validateCredentialEnvelope(
-  credential: ParsedCredential,
-  ErrorType:
-    | typeof InvalidWebauthnRegistrationError
-    | typeof InvalidWebauthnAuthenticationError,
-) {
-  if (credential.type !== 'public-key' || !credential.id || !credential.rawId) {
-    throw new ErrorType();
-  }
-}
-
-function validateClientData(
-  clientDataJSON: Buffer,
-  expectedType: 'webauthn.create' | 'webauthn.get',
-  expectedChallenge: string,
-  expectedOrigins: string[],
-  ErrorType:
-    | typeof InvalidWebauthnRegistrationError
-    | typeof InvalidWebauthnAuthenticationError,
-) {
-  const clientData = JSON.parse(clientDataJSON.toString('utf8')) as {
-    type?: string;
-    challenge?: string;
-    origin?: string;
-    crossOrigin?: boolean;
-  };
-
-  if (
-    clientData.type !== expectedType ||
-    clientData.challenge !== expectedChallenge ||
-    !clientData.origin ||
-    !expectedOrigins.includes(clientData.origin) ||
-    clientData.crossOrigin === true
-  ) {
-    throw new ErrorType();
-  }
-}
-
-function parseAuthenticatorData(
-  authData: Buffer,
-  includeAttestedCredentialData: boolean,
-): ParsedAuthenticatorData {
-  if (authData.length < 37) {
-    throw new Error('invalid auth data length');
-  }
-
-  const parsed: ParsedAuthenticatorData = {
-    rpIdHash: authData.subarray(0, 32),
-    flags: authData[32] ?? 0,
-    counter: authData.readUInt32BE(33),
-  };
-
-  if (!includeAttestedCredentialData) {
-    return parsed;
-  }
-
-  if (authData.length < 55) {
-    throw new Error('invalid attested auth data length');
-  }
-
-  const credentialIdLength = authData.readUInt16BE(53);
-  const credentialIdStart = 55;
-  const credentialIdEnd = credentialIdStart + credentialIdLength;
-
-  parsed.credentialId = authData.subarray(credentialIdStart, credentialIdEnd);
-  parsed.credentialPublicKey = authData.subarray(credentialIdEnd);
-
-  if (
-    parsed.credentialId.length !== credentialIdLength ||
-    parsed.credentialPublicKey.length === 0
-  ) {
-    throw new Error('invalid credential data');
-  }
-
-  return parsed;
-}
-
-function validateRpIdHash(
-  actualRpIdHash: Buffer,
-  expectedRpId: string,
-  ErrorType:
-    | typeof InvalidWebauthnRegistrationError
-    | typeof InvalidWebauthnAuthenticationError,
-) {
-  if (!actualRpIdHash.equals(sha256(expectedRpId))) {
-    throw new ErrorType();
-  }
-}
-
-function ensureFlag(
-  flags: number,
-  mask: number,
-  ErrorType:
-    | typeof InvalidWebauthnRegistrationError
-    | typeof InvalidWebauthnAuthenticationError,
-) {
-  if ((flags & mask) === 0) {
-    throw new ErrorType();
-  }
-}
-
 function isSqliteUniqueConstraint(error: unknown): boolean {
   return (
     error instanceof Error &&
@@ -597,8 +441,4 @@ function isSqliteUniqueConstraint(error: unknown): boolean {
       'UNIQUE constraint failed: webauthn_credentials.credential_id',
     )
   );
-}
-
-function sha256(value: string | Buffer): Buffer {
-  return createHash('sha256').update(value).digest();
 }

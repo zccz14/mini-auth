@@ -294,6 +294,15 @@ describe('webauthn routes', () => {
     const testApp = await createSignedInApp('signin@example.com');
     openApps.push(testApp);
     const passkey = await registerPasskey(testApp, 'signin@example.com');
+    const storedCredentialBeforeAuth = testApp.db
+      .prepare(
+        'SELECT credential_id, public_key, counter FROM webauthn_credentials WHERE user_id = ?',
+      )
+      .get(testApp.userId) as {
+      credential_id: string;
+      public_key: string;
+      counter: number;
+    };
 
     const optionsResponse = await testApp.app.request(
       '/webauthn/authenticate/options',
@@ -316,9 +325,22 @@ describe('webauthn routes', () => {
       },
     );
     const storedCredential = testApp.db
-      .prepare('SELECT counter FROM webauthn_credentials WHERE user_id = ?')
-      .get(testApp.userId) as { counter: number };
+      .prepare(
+        'SELECT credential_id, public_key, counter FROM webauthn_credentials WHERE user_id = ?',
+      )
+      .get(testApp.userId) as {
+      credential_id: string;
+      public_key: string;
+      counter: number;
+    };
 
+    expect(storedCredentialBeforeAuth).toEqual({
+      credential_id: passkey.credentialId,
+      public_key: expect.any(String),
+      counter: 0,
+    });
+    expect(storedCredentialBeforeAuth.public_key).not.toMatch(/^\s*\{/);
+    expect(storedCredentialBeforeAuth.public_key.length).toBeGreaterThan(0);
     expect(verifyResponse.status).toBe(200);
     expect(await verifyResponse.json()).toMatchObject({
       access_token: expect.any(String),
@@ -326,7 +348,11 @@ describe('webauthn routes', () => {
       expires_in: 900,
       refresh_token: expect.any(String),
     });
-    expect(storedCredential.counter).toBe(1);
+    expect(storedCredential).toEqual({
+      credential_id: passkey.credentialId,
+      public_key: storedCredentialBeforeAuth.public_key,
+      counter: 1,
+    });
     expectLogEntry(testApp.logs, {
       event: 'webauthn.authenticate.verify.succeeded',
       user_id: testApp.userId,
@@ -335,6 +361,50 @@ describe('webauthn routes', () => {
     expect(JSON.stringify(testApp.logs)).not.toContain(
       credential.response.clientDataJSON,
     );
+  });
+
+  it('authenticate/verify signs in with an RS256 credential', async () => {
+    const testApp = await createSignedInApp('signin-rs256@example.com');
+    openApps.push(testApp);
+    const passkey = await registerPasskey(testApp, {
+      seed: 'signin-rs256@example.com',
+      algorithm: 'RS256',
+    });
+
+    const options = await getAuthOptions(testApp);
+    const credential = passkey.createAuthenticationCredential(
+      options.publicKey,
+      origin,
+    );
+    const response = await verifyAuth(testApp, options.request_id, credential);
+    const storedCredential = testApp.db
+      .prepare(
+        'SELECT credential_id, public_key, counter FROM webauthn_credentials WHERE user_id = ?',
+      )
+      .get(testApp.userId) as {
+      credential_id: string;
+      public_key: string;
+      counter: number;
+    };
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      access_token: expect.any(String),
+      token_type: 'Bearer',
+      expires_in: 900,
+      refresh_token: expect.any(String),
+    });
+    expect(storedCredential).toEqual({
+      credential_id: passkey.credentialId,
+      public_key: expect.any(String),
+      counter: 1,
+    });
+    expect(storedCredential.public_key).not.toMatch(/^\s*\{/);
+    expectLogEntry(testApp.logs, {
+      event: 'webauthn.authenticate.verify.succeeded',
+      user_id: testApp.userId,
+      credential_id: passkey.credentialId,
+    });
   });
 
   it('authenticate/verify rejects replayed or expired challenges', async () => {
@@ -678,9 +748,14 @@ async function getAuthOptions(
 
 async function registerPasskey(
   testApp: Awaited<ReturnType<typeof createSignedInApp>>,
-  seed: string,
+  input:
+    | string
+    | {
+        seed: string;
+        algorithm: 'ES256' | 'RS256';
+      },
 ) {
-  const passkey = createTestPasskey(seed);
+  const passkey = createTestPasskey(input);
   const options = await getRegisterOptions(testApp);
   const credential = passkey.createRegistrationCredential(
     options.publicKey,
