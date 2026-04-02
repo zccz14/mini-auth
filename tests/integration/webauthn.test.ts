@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { encodeBase64Url } from '../../src/shared/crypto.js';
 import type { OtpMailSeam } from '../helpers/mock-smtp.js';
 
 const otpSeam = vi.hoisted(() => ({ current: null as OtpMailSeam | null }));
@@ -114,7 +115,7 @@ describe('webauthn routes', () => {
         challenge: expect.any(String),
         rp: { id: 'example.com', name: 'mini-auth' },
         user: {
-          id: expect.any(String),
+          id: encodeBase64Url(testApp.userId),
           name: 'register@example.com',
           displayName: 'register@example.com',
         },
