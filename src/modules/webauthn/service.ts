@@ -403,7 +403,11 @@ async function verifyRegistrationResponse(input: {
       expectedRPID: input.expectedRPID,
       requireUserVerification: false,
     });
-  } catch {
+  } catch (error) {
+    if (!isSimpleWebAuthnValidationError(error)) {
+      throw error;
+    }
+
     throw new InvalidWebauthnRegistrationError();
   }
 }
@@ -415,37 +419,80 @@ async function verifyAuthenticationResponse(input: {
   expectedRPID: string;
   storedCredential: NonNullable<ReturnType<typeof getCredentialByCredentialId>>;
 }) {
+  const response = {
+    ...input.credential,
+    response: {
+      ...input.credential.response,
+      userHandle: input.credential.response.userHandle ?? undefined,
+    },
+    clientExtensionResults: {},
+  } as Parameters<
+    typeof verifySimpleWebAuthnAuthenticationResponse
+  >[0]['response'];
+  const credential = {
+    id: input.storedCredential.credentialId,
+    publicKey: Uint8Array.from(
+      decodeBase64Url(input.storedCredential.publicKey),
+    ),
+    counter: input.storedCredential.counter,
+    transports: input.storedCredential.transports as Parameters<
+      typeof verifySimpleWebAuthnAuthenticationResponse
+    >[0]['credential']['transports'],
+  };
+
   try {
     return await verifySimpleWebAuthnAuthenticationResponse({
-      response: {
-        ...input.credential,
-        response: {
-          ...input.credential.response,
-          userHandle: input.credential.response.userHandle ?? undefined,
-        },
-        clientExtensionResults: {},
-      } as Parameters<
-        typeof verifySimpleWebAuthnAuthenticationResponse
-      >[0]['response'],
+      response,
       expectedChallenge: input.expectedChallenge,
       expectedOrigin: input.expectedOrigin,
       expectedRPID: input.expectedRPID,
-      credential: {
-        id: input.storedCredential.credentialId,
-        publicKey: Uint8Array.from(
-          decodeBase64Url(input.storedCredential.publicKey),
-        ),
-        counter: input.storedCredential.counter,
-        transports: input.storedCredential.transports as Parameters<
-          typeof verifySimpleWebAuthnAuthenticationResponse
-        >[0]['credential']['transports'],
-      },
+      credential,
       requireUserVerification: false,
     });
-  } catch {
+  } catch (error) {
+    if (!isSimpleWebAuthnValidationError(error)) {
+      throw error;
+    }
+
     throw new InvalidWebauthnAuthenticationError();
   }
 }
+
+function isSimpleWebAuthnValidationError(error: unknown): error is Error {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return (
+    error.name === 'UnexpectedRPIDHash' ||
+    error.name === 'InvalidBackupFlags' ||
+    SIMPLE_WEBAUTHN_VALIDATION_ERROR_PREFIXES.some((prefix) =>
+      error.message.startsWith(prefix),
+    )
+  );
+}
+
+const SIMPLE_WEBAUTHN_VALIDATION_ERROR_PREFIXES = [
+  'Missing credential ID',
+  'Credential ID was not base64url-encoded',
+  'Credential missing response',
+  'Credential response ',
+  'Unexpected credential type',
+  'Unexpected registration response',
+  'Unexpected authentication response',
+  'Unexpected tokenBinding',
+  'Unexpected value for TokenBinding',
+  'Custom challenge verifier returned false',
+  'User not present during authentication',
+  'User presence was required, but user was not present',
+  'User verification required, but user could not be verified',
+  'User verification was required, but user could not be verified',
+  'No credential ID was provided by authenticator',
+  'No public key was provided by authenticator',
+  'No AAGUID was present during registration',
+  'Credential public key was missing numeric alg',
+  'Unexpected public key alg',
+] as const;
 
 export function deleteCredential(
   db: DatabaseClient,
