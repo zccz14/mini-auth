@@ -67,11 +67,11 @@ export function createTestPasskey(
       ]);
       const signature = signPayload(privateKey, authData, clientDataJSON);
       const attestationObject = encoder.encode(
-        new Map([
+        new Map<string, unknown>([
           ['fmt', 'packed'],
           [
             'attStmt',
-            new Map([
+            new Map<string, number | Buffer>([
               ['alg', toCoseAlgorithmIdentifier(config.algorithm)],
               ['sig', signature],
             ]),

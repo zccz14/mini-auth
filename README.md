@@ -123,7 +123,10 @@ Registration options require discoverable credentials:
       "name": "user@example.com",
       "displayName": "user@example.com"
     },
-    "pubKeyCredParams": [{ "type": "public-key", "alg": -7 }],
+    "pubKeyCredParams": [
+      { "type": "public-key", "alg": -7 },
+      { "type": "public-key", "alg": -257 }
+    ],
     "timeout": 300000,
     "authenticatorSelection": {
       "residentKey": "required",
@@ -146,6 +149,8 @@ Authentication options are username-less and intentionally omit `allowCredential
   }
 }
 ```
+
+WebAuthn registration and authentication verification now use `@simplewebauthn/server`. mini-auth intentionally limits advertised registration algorithms to `-7` (ES256) and `-257` (RS256), because those are the algorithms explicitly covered by the integration test suite.
 
 Generating a new register or authenticate challenge invalidates the previous unused challenge of the same type, so the client can simply request a fresh challenge instead of calling a separate cancel endpoint.
 
