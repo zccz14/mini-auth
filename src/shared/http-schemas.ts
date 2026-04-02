@@ -22,6 +22,7 @@ const baseCredentialSchema = z.object({
 export const webauthnRegisterVerifySchema = z.object({
   request_id: z.uuid(),
   credential: baseCredentialSchema.extend({
+    clientExtensionResults: z.record(z.string(), z.unknown()),
     response: z.object({
       clientDataJSON: z.string().min(1),
       attestationObject: z.string().min(1),

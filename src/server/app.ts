@@ -242,7 +242,7 @@ export function createApp(input: {
     const body = await parseJson(c.req.raw, webauthnRegisterVerifySchema);
 
     return c.json(
-      verifyRegistration(c.var.db, {
+      await verifyRegistration(c.var.db, {
         userId: c.var.auth.sub,
         requestId: body.request_id,
         credential: body.credential,

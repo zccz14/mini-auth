@@ -1,6 +1,7 @@
 import {
   generateAuthenticationOptions as generateSimpleWebAuthnAuthenticationOptions,
   generateRegistrationOptions as generateSimpleWebAuthnRegistrationOptions,
+  verifyRegistrationResponse as verifySimpleWebAuthnRegistrationResponse,
 } from '@simplewebauthn/server';
 import {
   createHash,
@@ -8,7 +9,6 @@ import {
   verify,
   type JsonWebKey,
 } from 'node:crypto';
-import { Decoder } from 'cbor-x';
 import type { DatabaseClient } from '../../infra/db/client.js';
 import { decodeBase64Url, encodeBase64Url } from '../../shared/crypto.js';
 import type { AppLogger } from '../../shared/logger.js';
@@ -25,8 +25,6 @@ import {
   getCredentialByCredentialId,
 } from './repo.js';
 
-const decoder = new Decoder();
-
 type JsonWebKeyWithCurve = JsonWebKey & {
   crv: 'P-256';
   kty: 'EC';
@@ -41,6 +39,7 @@ type ParsedCredential = {
 };
 
 type RegistrationCredential = ParsedCredential & {
+  clientExtensionResults: Record<string, unknown>;
   response: {
     clientDataJSON: string;
     attestationObject: string;
@@ -185,7 +184,7 @@ export async function generateRegistrationOptions(
   return response;
 }
 
-export function verifyRegistration(
+export async function verifyRegistration(
   db: DatabaseClient,
   input: {
     userId: string;
@@ -195,7 +194,7 @@ export function verifyRegistration(
     origins: string[];
     logger?: AppLogger;
   },
-): { ok: true } {
+): Promise<{ ok: true }> {
   try {
     const challenge = getValidChallenge(db, input.requestId, 'register');
 
@@ -203,12 +202,21 @@ export function verifyRegistration(
       throw new InvalidWebauthnRegistrationError();
     }
 
-    const verified = verifyRegistrationResponse(
-      input.credential,
-      challenge.challenge,
-      input.rpId,
-      input.origins,
-    );
+    const verification = await verifySimpleWebAuthnRegistrationResponse({
+      response: input.credential as Parameters<
+        typeof verifySimpleWebAuthnRegistrationResponse
+      >[0]['response'],
+      expectedChallenge: challenge.challenge,
+      expectedOrigin: input.origins,
+      expectedRPID: input.rpId,
+      requireUserVerification: false,
+    });
+
+    if (!verification.verified || !verification.registrationInfo) {
+      throw new InvalidWebauthnRegistrationError();
+    }
+
+    const { credential } = verification.registrationInfo;
 
     const now = new Date().toISOString();
 
@@ -218,17 +226,17 @@ export function verifyRegistration(
 
     createCredential(db, {
       userId: input.userId,
-      credentialId: verified.credentialId,
-      publicKey: JSON.stringify(verified.publicKey),
-      counter: verified.counter,
-      transports: verified.transports,
+      credentialId: credential.id,
+      publicKey: encodeBase64Url(Buffer.from(credential.publicKey)),
+      counter: credential.counter,
+      transports: credential.transports ?? [],
     });
     input.logger?.info(
       {
         event: 'webauthn.register.verify.succeeded',
         request_id: input.requestId,
         user_id: input.userId,
-        credential_id: verified.credentialId,
+        credential_id: credential.id,
       },
       'WebAuthn registration verified',
     );
@@ -245,7 +253,11 @@ export function verifyRegistration(
       throw new DuplicateCredentialError();
     }
 
-    throw error;
+    if (error instanceof InvalidWebauthnRegistrationError) {
+      throw error;
+    }
+
+    throw new InvalidWebauthnRegistrationError();
   }
 
   return { ok: true };
@@ -391,98 +403,6 @@ export function deleteCredential(
   }
 
   return { ok: true };
-}
-
-function verifyRegistrationResponse(
-  credential: RegistrationCredential,
-  expectedChallenge: string,
-  expectedRpId: string,
-  expectedOrigins: string[],
-): {
-  credentialId: string;
-  publicKey: JsonWebKeyWithCurve;
-  counter: number;
-  transports: string[];
-} {
-  try {
-    validateCredentialEnvelope(credential, InvalidWebauthnRegistrationError);
-
-    const clientDataJSON = decodeBase64Url(credential.response.clientDataJSON);
-    validateClientData(
-      clientDataJSON,
-      'webauthn.create',
-      expectedChallenge,
-      expectedOrigins,
-      InvalidWebauthnRegistrationError,
-    );
-    const attestationObject = decodeBase64Url(
-      credential.response.attestationObject,
-    );
-    const attestation = decoder.decode(attestationObject) as {
-      fmt?: string;
-      attStmt?: { alg?: number; sig?: Uint8Array };
-      authData?: Uint8Array;
-    };
-
-    if (
-      attestation.fmt !== 'packed' ||
-      attestation.attStmt?.alg !== -7 ||
-      !attestation.attStmt.sig ||
-      !attestation.authData
-    ) {
-      throw new InvalidWebauthnRegistrationError();
-    }
-
-    const authData = Buffer.from(attestation.authData);
-    const parsedAuthData = parseAuthenticatorData(authData, true);
-
-    validateRpIdHash(
-      parsedAuthData.rpIdHash,
-      expectedRpId,
-      InvalidWebauthnRegistrationError,
-    );
-    ensureFlag(parsedAuthData.flags, 0x01, InvalidWebauthnRegistrationError);
-    ensureFlag(parsedAuthData.flags, 0x40, InvalidWebauthnRegistrationError);
-
-    if (!parsedAuthData.credentialId || !parsedAuthData.credentialPublicKey) {
-      throw new InvalidWebauthnRegistrationError();
-    }
-
-    const publicKey = coseEc2ToJwk(parsedAuthData.credentialPublicKey);
-    const rawId = decodeBase64Url(credential.rawId);
-
-    if (
-      credential.id !== encodeBase64Url(parsedAuthData.credentialId) ||
-      !rawId.equals(parsedAuthData.credentialId)
-    ) {
-      throw new InvalidWebauthnRegistrationError();
-    }
-
-    const signaturePayload = Buffer.concat([authData, sha256(clientDataJSON)]);
-    const verified = verify(
-      'sha256',
-      signaturePayload,
-      createPublicKey({ format: 'jwk', key: publicKey as JsonWebKey }),
-      Buffer.from(attestation.attStmt.sig),
-    );
-
-    if (!verified) {
-      throw new InvalidWebauthnRegistrationError();
-    }
-
-    return {
-      credentialId: credential.id,
-      publicKey,
-      counter: parsedAuthData.counter,
-      transports: credential.response.transports ?? [],
-    };
-  } catch (error) {
-    if (error instanceof InvalidWebauthnRegistrationError) {
-      throw error;
-    }
-
-    throw new InvalidWebauthnRegistrationError();
-  }
 }
 
 function verifyAuthenticationResponse(
@@ -644,35 +564,6 @@ function parseAuthenticatorData(
   }
 
   return parsed;
-}
-
-function coseEc2ToJwk(cosePublicKeyBytes: Buffer): JsonWebKeyWithCurve {
-  const cosePublicKey = decoder.decode(cosePublicKeyBytes) as Map<
-    number,
-    number | Uint8Array
-  >;
-  const kty = cosePublicKey.get(1);
-  const alg = cosePublicKey.get(3);
-  const curve = cosePublicKey.get(-1);
-  const x = cosePublicKey.get(-2);
-  const y = cosePublicKey.get(-3);
-
-  if (
-    kty !== 2 ||
-    alg !== -7 ||
-    curve !== 1 ||
-    !(x instanceof Uint8Array) ||
-    !(y instanceof Uint8Array)
-  ) {
-    throw new InvalidWebauthnRegistrationError();
-  }
-
-  return {
-    kty: 'EC',
-    crv: 'P-256',
-    x: Buffer.from(x).toString('base64url'),
-    y: Buffer.from(y).toString('base64url'),
-  };
 }
 
 function validateRpIdHash(

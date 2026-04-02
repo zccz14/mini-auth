@@ -21,12 +21,31 @@ type AuthenticationOptions = {
   rpId: string;
 };
 
-export function createTestPasskey(seed = 'default-passkey') {
-  const { privateKey, publicKey } = generateKeyPairSync('ec', {
-    namedCurve: 'prime256v1',
-  });
+type TestPasskeyAlgorithm = 'ES256' | 'RS256';
+
+type CreateTestPasskeyInput =
+  | string
+  | {
+      seed?: string;
+      algorithm?: TestPasskeyAlgorithm;
+    };
+
+export function createTestPasskey(
+  input: CreateTestPasskeyInput = 'default-passkey',
+) {
+  const config =
+    typeof input === 'string'
+      ? { seed: input, algorithm: 'ES256' as const }
+      : {
+          seed: input.seed ?? 'default-passkey',
+          algorithm: input.algorithm ?? 'ES256',
+        };
+  const { privateKey, publicKey } =
+    config.algorithm === 'RS256'
+      ? generateKeyPairSync('rsa', { modulusLength: 2048 })
+      : generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
   const publicJwk = publicKey.export({ format: 'jwk' }) as JsonWebKey;
-  const credentialId = sha256(Buffer.from(seed, 'utf8')).subarray(0, 32);
+  const credentialId = sha256(Buffer.from(config.seed, 'utf8')).subarray(0, 32);
   let counter = 0;
 
   return {
@@ -47,19 +66,25 @@ export function createTestPasskey(seed = 'default-passkey') {
         encoder.encode(toCoseKey(publicJwk)),
       ]);
       const signature = signPayload(privateKey, authData, clientDataJSON);
-      const attestationObject = encoder.encode({
-        fmt: 'packed',
-        attStmt: {
-          alg: -7,
-          sig: signature,
-        },
-        authData,
-      });
+      const attestationObject = encoder.encode(
+        new Map([
+          ['fmt', 'packed'],
+          [
+            'attStmt',
+            new Map([
+              ['alg', toCoseAlgorithmIdentifier(config.algorithm)],
+              ['sig', signature],
+            ]),
+          ],
+          ['authData', authData],
+        ]),
+      );
 
       return {
         id: encodeBase64Url(credentialId),
         rawId: encodeBase64Url(credentialId),
         type: 'public-key',
+        clientExtensionResults: {},
         response: {
           clientDataJSON: encodeBase64Url(clientDataJSON),
           attestationObject: encodeBase64Url(attestationObject),
@@ -140,6 +165,15 @@ function signPayload(
 }
 
 function toCoseKey(publicJwk: JsonWebKey) {
+  if (publicJwk.kty === 'RSA' && publicJwk.n && publicJwk.e) {
+    return new Map<number, number | Buffer>([
+      [1, 3],
+      [3, -257],
+      [-1, Buffer.from(publicJwk.n, 'base64url')],
+      [-2, Buffer.from(publicJwk.e, 'base64url')],
+    ]);
+  }
+
   return new Map<number, number | Buffer>([
     [1, 2],
     [3, -7],
@@ -147,6 +181,10 @@ function toCoseKey(publicJwk: JsonWebKey) {
     [-2, Buffer.from(publicJwk.x ?? '', 'base64url')],
     [-3, Buffer.from(publicJwk.y ?? '', 'base64url')],
   ]);
+}
+
+function toCoseAlgorithmIdentifier(algorithm: TestPasskeyAlgorithm) {
+  return algorithm === 'RS256' ? -257 : -7;
 }
 
 function toUint16Buffer(value: number): Buffer {

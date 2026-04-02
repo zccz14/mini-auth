@@ -94,12 +94,13 @@ describe('webauthn routes', () => {
 
     const storedCredential = testApp.db
       .prepare(
-        'SELECT user_id, credential_id, transports, counter FROM webauthn_credentials WHERE user_id = ?',
+        'SELECT user_id, credential_id, public_key, transports, counter FROM webauthn_credentials WHERE user_id = ?',
       )
       .get(testApp.userId) as
       | {
           user_id: string;
           credential_id: string;
+          public_key: string;
           transports: string;
           counter: number;
         }
@@ -132,9 +133,12 @@ describe('webauthn routes', () => {
     expect(storedCredential).toEqual({
       user_id: testApp.userId,
       credential_id: passkey.credentialId,
+      public_key: expect.any(String),
       transports: 'internal',
       counter: 0,
     });
+    expect(storedCredential?.public_key).not.toMatch(/^\s*\{/);
+    expect(storedCredential?.public_key.length).toBeGreaterThan(0);
     expectLogEntry(testApp.logs, {
       event: 'webauthn.register.options.created',
       user_id: testApp.userId,
@@ -147,6 +151,29 @@ describe('webauthn routes', () => {
     expect(JSON.stringify(testApp.logs)).not.toContain(
       credential.response.clientDataJSON,
     );
+  });
+
+  it('register/verify accepts an RS256 credential', async () => {
+    const testApp = await createSignedInApp('register-rs256@example.com');
+    openApps.push(testApp);
+    const passkey = createTestPasskey({
+      seed: 'register-rs256@example.com',
+      algorithm: 'RS256',
+    });
+
+    const options = await getRegisterOptions(testApp);
+    const credential = passkey.createRegistrationCredential(
+      options.publicKey,
+      origin,
+    );
+    const response = await testApp.app.request('/webauthn/register/verify', {
+      method: 'POST',
+      headers: authHeaders(testApp.tokens.access_token),
+      body: json({ request_id: options.request_id, credential }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true });
   });
 
   it('second register/options invalidates the first unused request id', async () => {
