@@ -433,6 +433,39 @@ describe('webauthn routes', () => {
     });
   });
 
+  it('authenticate/verify accepts a credential with a null userHandle', async () => {
+    const testApp = await createSignedInApp(
+      'signin-null-userhandle@example.com',
+    );
+    openApps.push(testApp);
+    const passkey = await registerPasskey(
+      testApp,
+      'signin-null-userhandle@example.com',
+    );
+
+    const options = await getAuthOptions(testApp);
+    const credential = passkey.createAuthenticationCredential(
+      options.publicKey,
+      origin,
+    );
+    credential.response.userHandle = null;
+
+    const response = await verifyAuth(testApp, options.request_id, credential);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      access_token: expect.any(String),
+      token_type: 'Bearer',
+      expires_in: 900,
+      refresh_token: expect.any(String),
+    });
+    expectLogEntry(testApp.logs, {
+      event: 'webauthn.authenticate.verify.succeeded',
+      user_id: testApp.userId,
+      credential_id: passkey.credentialId,
+    });
+  });
+
   it('authenticate/verify rejects replayed or expired challenges', async () => {
     const testApp = await createSignedInApp('replay@example.com');
     openApps.push(testApp);
