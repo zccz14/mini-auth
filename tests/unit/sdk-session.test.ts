@@ -100,6 +100,25 @@ describe('sdk session flows', () => {
     expect(sdk.me.get()?.email).toBe('u@example.com');
   });
 
+  it('preserves authenticated state when refresh fails with a transient 5xx error', async () => {
+    const sdk = createMiniAuthForTest({
+      storage: fakeAuthenticatedStorageWithMe(),
+      fetch: vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse({ error: 'internal_error' }, 500)),
+    });
+
+    await expect(sdk.session.refresh()).rejects.toMatchObject({
+      error: 'internal_error',
+    });
+    expect(sdk.session.getState()).toMatchObject({
+      status: 'recovering',
+      refreshToken: 'refresh-token',
+      accessToken: 'access-token',
+    });
+    expect(sdk.me.get()?.email).toBe('u@example.com');
+  });
+
   it('me.get returns cached state synchronously', () => {
     const sdk = createMiniAuthForTest({
       storage: fakeAuthenticatedStorageWithMe(),
@@ -126,7 +145,7 @@ describe('sdk session flows', () => {
     expect(sdk.me.get()?.email).toBe('updated@example.com');
   });
 
-  it('clears state when refresh succeeds but me reload fails', async () => {
+  it('preserves recoverable state when refresh succeeds but me reload fails transiently', async () => {
     const sdk = createMiniAuthForTest({
       storage: fakeAuthenticatedStorage(),
       fetch: vi
@@ -145,7 +164,11 @@ describe('sdk session flows', () => {
     await expect(sdk.session.refresh()).rejects.toMatchObject({
       error: 'internal_error',
     });
-    expect(sdk.session.getState().status).toBe('anonymous');
+    expect(sdk.session.getState()).toMatchObject({
+      status: 'recovering',
+      accessToken: 'a2',
+      refreshToken: 'r2',
+    });
   });
 
   it('clears state and emits anonymous when refresh token is rejected', async () => {
@@ -167,6 +190,61 @@ describe('sdk session flows', () => {
     expect(listener).toHaveBeenCalledWith(
       expect.objectContaining({ status: 'anonymous' }),
     );
+  });
+
+  it('preserves recoverable state when boot me reload fails transiently', async () => {
+    const sdk = createMiniAuthForTest({
+      autoRecover: true,
+      storage: fakeAuthenticatedStorageWithMe(),
+      fetch: vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse({ error: 'internal_error' }, 500)),
+    });
+
+    await expect(sdk.ready).resolves.toBeUndefined();
+    expect(sdk.session.getState()).toMatchObject({
+      status: 'recovering',
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+    });
+    expect(sdk.me.get()?.email).toBe('u@example.com');
+  });
+
+  it('treats invalid persisted timestamps as needing refresh during recovery', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          access_token: 'a2',
+          refresh_token: 'r2',
+          expires_in: 900,
+          token_type: 'Bearer',
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          user_id: 'u1',
+          email: 'u@example.com',
+          webauthn_credentials: [],
+          active_sessions: [],
+        }),
+      );
+    const sdk = createMiniAuthForTest({
+      autoRecover: true,
+      fetch,
+      storage: fakeAuthenticatedStorageWithMe(undefined, {
+        receivedAt: 'not-a-date',
+        expiresAt: 'still-not-a-date',
+      }),
+    });
+
+    await sdk.ready;
+    expect(countRefreshCalls(fetch)).toBe(1);
+    expect(sdk.session.getState()).toMatchObject({
+      status: 'authenticated',
+      accessToken: 'a2',
+      refreshToken: 'r2',
+    });
   });
 
   it('logout clears local state even when remote logout fails', async () => {

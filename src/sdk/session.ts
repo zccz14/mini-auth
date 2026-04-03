@@ -27,7 +27,12 @@ export function createSessionController(input: {
     getState: () => input.state.getState(),
     onChange: (listener: (state: SessionSnapshot) => void) =>
       input.state.onChange(listener),
-    async acceptSessionResponse(response: unknown): Promise<SessionResult> {
+    async acceptSessionResponse(
+      response: unknown,
+      options: {
+        clearOnMeFailure?: 'always' | 'auth-invalidating';
+      } = {},
+    ): Promise<SessionResult> {
       const session = normalizeTokenResponse(response, input.now);
 
       input.state.setRecovering({
@@ -42,7 +47,12 @@ export function createSessionController(input: {
         input.state.setAuthenticated(result);
         return result;
       } catch (error) {
-        input.state.setAnonymous();
+        if (
+          options.clearOnMeFailure !== 'auth-invalidating' ||
+          isAuthInvalidatingError(error)
+        ) {
+          input.state.setAnonymous();
+        }
         throw error;
       }
     },
@@ -66,9 +76,13 @@ export function createSessionController(input: {
             },
           );
 
-          return await this.acceptSessionResponse(response);
+          return await this.acceptSessionResponse(response, {
+            clearOnMeFailure: 'auth-invalidating',
+          });
         } catch (error) {
-          input.state.setAnonymous();
+          if (isAuthInvalidatingError(error)) {
+            input.state.setAnonymous();
+          }
           throw error;
         } finally {
           refreshPromise = null;
@@ -85,12 +99,12 @@ export function createSessionController(input: {
         return;
       }
 
-      if (!snapshot.accessToken || needsRefresh(snapshot, input.now())) {
-        await this.refresh();
-        return;
-      }
-
       try {
+        if (!snapshot.accessToken || needsRefresh(snapshot, input.now())) {
+          await this.refresh();
+          return;
+        }
+
         const me = await fetchMe(snapshot.accessToken);
         input.state.setAuthenticated({
           accessToken: snapshot.accessToken,
@@ -100,8 +114,10 @@ export function createSessionController(input: {
           expiresAt: snapshot.expiresAt ?? new Date(input.now()).toISOString(),
           me,
         });
-      } catch {
-        input.state.setAnonymous();
+      } catch (error) {
+        if (isAuthInvalidatingError(error)) {
+          input.state.setAnonymous();
+        }
       }
     },
     async reloadMe(): Promise<SessionSnapshot['me']> {
@@ -206,11 +222,14 @@ export function needsRefresh(snapshot: SessionSnapshot, now: number): boolean {
     return true;
   }
 
-  return shouldRefresh(
-    now,
-    Date.parse(snapshot.expiresAt),
-    Date.parse(snapshot.receivedAt),
-  );
+  const expiresAt = Date.parse(snapshot.expiresAt);
+  const receivedAt = Date.parse(snapshot.receivedAt);
+
+  if (!Number.isFinite(expiresAt) || !Number.isFinite(receivedAt)) {
+    return true;
+  }
+
+  return shouldRefresh(now, expiresAt, receivedAt);
 }
 
 export function shouldRefresh(
@@ -222,4 +241,24 @@ export function shouldRefresh(
   const thresholdMs = lifetimeMs < 10 * 60_000 ? lifetimeMs / 2 : 5 * 60_000;
 
   return now >= expiresAt - thresholdMs;
+}
+
+function isAuthInvalidatingError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const candidate = error as {
+    code?: unknown;
+    error?: unknown;
+    message?: unknown;
+    status?: unknown;
+  };
+
+  return (
+    candidate.status === 401 ||
+    candidate.error === 'invalid_refresh_token' ||
+    (candidate.code === 'request_failed' &&
+      candidate.message === 'request_failed: Invalid session payload')
+  );
 }

@@ -285,11 +285,12 @@ function createRuntime() {
     if (!snapshot.expiresAt || !snapshot.receivedAt) {
       return true;
     }
-    return shouldRefresh(
-      now,
-      Date.parse(snapshot.expiresAt),
-      Date.parse(snapshot.receivedAt),
-    );
+    const expiresAt = Date.parse(snapshot.expiresAt);
+    const receivedAt = Date.parse(snapshot.receivedAt);
+    if (!Number.isFinite(expiresAt) || !Number.isFinite(receivedAt)) {
+      return true;
+    }
+    return shouldRefresh(now, expiresAt, receivedAt);
   }
 
   function normalizeTokenResponse(payload, now) {
@@ -323,7 +324,7 @@ function createRuntime() {
       onChange(listener) {
         return input.state.onChange(listener);
       },
-      async acceptSessionResponse(response) {
+      async acceptSessionResponse(response, options = {}) {
         const session = normalizeTokenResponse(response, input.now);
         input.state.setRecovering({
           ...session,
@@ -335,7 +336,12 @@ function createRuntime() {
           input.state.setAuthenticated(result);
           return result;
         } catch (error) {
-          input.state.setAnonymous();
+          if (
+            options.clearOnMeFailure !== 'auth-invalidating' ||
+            isAuthInvalidatingError(error)
+          ) {
+            input.state.setAnonymous();
+          }
           throw error;
         }
       },
@@ -352,9 +358,13 @@ function createRuntime() {
             const response = await input.http.postJson('/session/refresh', {
               refresh_token: snapshot.refreshToken,
             });
-            return await controller.acceptSessionResponse(response);
+            return await controller.acceptSessionResponse(response, {
+              clearOnMeFailure: 'auth-invalidating',
+            });
           } catch (error) {
-            input.state.setAnonymous();
+            if (isAuthInvalidatingError(error)) {
+              input.state.setAnonymous();
+            }
             throw error;
           } finally {
             refreshPromise = null;
@@ -368,11 +378,11 @@ function createRuntime() {
           input.state.setAnonymous();
           return;
         }
-        if (!snapshot.accessToken || needsRefresh(snapshot, input.now())) {
-          await controller.refresh();
-          return;
-        }
         try {
+          if (!snapshot.accessToken || needsRefresh(snapshot, input.now())) {
+            await controller.refresh();
+            return;
+          }
           const me = await fetchMe(snapshot.accessToken);
           input.state.setAuthenticated({
             accessToken: snapshot.accessToken,
@@ -383,8 +393,10 @@ function createRuntime() {
               snapshot.expiresAt ?? new Date(input.now()).toISOString(),
             me,
           });
-        } catch {
-          input.state.setAnonymous();
+        } catch (error) {
+          if (isAuthInvalidatingError(error)) {
+            input.state.setAnonymous();
+          }
         }
       },
       async reloadMe() {
@@ -740,6 +752,15 @@ function createRuntime() {
       error?.code === 'webauthn_cancelled' ||
       error?.name === 'AbortError' ||
       error?.name === 'NotAllowedError'
+    );
+  }
+
+  function isAuthInvalidatingError(error) {
+    return (
+      error?.status === 401 ||
+      error?.error === 'invalid_refresh_token' ||
+      (error?.code === 'request_failed' &&
+        error?.message === 'request_failed: Invalid session payload')
     );
   }
 

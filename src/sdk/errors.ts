@@ -3,7 +3,9 @@ import type { ServerErrorPayload } from './types.js';
 export type SdkErrorCode =
   | 'sdk_init_failed'
   | 'missing_session'
-  | 'request_failed';
+  | 'request_failed'
+  | 'webauthn_cancelled'
+  | 'webauthn_unsupported';
 
 export type SdkError = Error & {
   code: SdkErrorCode;
