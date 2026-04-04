@@ -1,155 +1,381 @@
-import { getDemoSetupState } from './setup.js';
+import { bootstrapDemoPage } from './bootstrap.js';
 
-const storageKey = 'mini-auth-demo-inputs';
-const sdk = window.MiniAuth;
+const STORAGE_KEY = 'mini-auth-demo-inputs';
+const DEFAULT_LATEST_ACTION = 'No request yet.';
+const DEFAULT_LATEST_RESULT = 'No response yet.';
+const DEFAULT_SDK_URL = 'http://127.0.0.1:7777/sdk/singleton-iife.js';
+const BROWSER_PASSKEY_WARNING =
+  'This browser does not support WebAuthn / passkeys.';
 
-const state = {
-  email: '',
-  latestAction: 'No request yet.',
-  latestResult: 'No response yet.',
-};
+export function renderContentState(root, setupState, content) {
+  setText(root, '#hero-title', content.hero?.title || '');
+  setText(root, '#hero-value-prop', content.hero?.valueProp || '');
+  setText(root, '#hero-audience', content.hero?.audience || '');
+  setList(root, '#hero-capabilities', content.hero?.capabilities || []);
+  setText(root, '#page-origin', setupState.currentOrigin || '');
+  setText(root, '#page-rp-id', setupState.suggestedRpId || '');
+  setText(root, '#origin-command', content.startupCommand || '');
+  setText(root, '#sdk-script-snippet', content.sdkScriptTag || '');
+  setText(root, '#jose-snippet', content.joseSnippet || '');
+  setText(root, '#setup-warning', setupState.corsWarning || '');
+  setList(root, '#how-it-works-list', content.howItWorks || []);
+  setList(root, '#backend-notes-list', content.backendNotes || []);
+  setList(root, '#deployment-notes-list', content.deploymentNotes || []);
+  setList(root, '#known-issues-list', content.knownIssues || []);
+  setText(
+    root,
+    '#backend-notes-disclosure-summary',
+    content.backendNotesDisclosureLabel || '',
+  );
 
-const elements = {
-  baseUrl: document.querySelector('#base-url'),
-  email: document.querySelector('#email'),
-  otpCode: document.querySelector('#otp-code'),
-  accessToken: document.querySelector('#access-token'),
-  refreshToken: document.querySelector('#refresh-token'),
-  requestId: document.querySelector('#request-id'),
-  latestRequest: document.querySelector('#latest-request'),
-  latestResponse: document.querySelector('#latest-response'),
-  pageOrigin: document.querySelector('#page-origin'),
-  pageRpId: document.querySelector('#page-rp-id'),
-  setupWarning: document.querySelector('#setup-warning'),
-  originCommand: document.querySelector('#origin-command'),
-  emailStartOutput: document.querySelector('#email-start-output'),
-  emailVerifyOutput: document.querySelector('#email-verify-output'),
-  registerOutput: document.querySelector('#register-output'),
-  authenticateOutput: document.querySelector('#authenticate-output'),
-  emailStartButton: document.querySelector('#email-start-button'),
-  emailVerifyButton: document.querySelector('#email-verify-button'),
-  registerButton: document.querySelector('#register-button'),
-  authenticateButton: document.querySelector('#authenticate-button'),
-  clearStateButton: document.querySelector('#clear-state-button'),
-  statusConfig: document.querySelector('#status-config'),
-  statusEmailStart: document.querySelector('#status-email-start'),
-  statusEmailVerify: document.querySelector('#status-email-verify'),
-  statusRegister: document.querySelector('#status-register'),
-  statusAuthenticate: document.querySelector('#status-authenticate'),
-};
+  const configError = query(root, '#config-error');
+  if (configError) {
+    configError.textContent = setupState.configError || '';
+    configError.hidden = !setupState.configError;
+  }
 
-const sectionViews = {
-  'email-start': {
-    output: elements.emailStartOutput,
-    pill: elements.statusEmailStart,
-  },
-  'email-verify': {
-    output: elements.emailVerifyOutput,
-    pill: elements.statusEmailVerify,
-  },
-  register: {
-    output: elements.registerOutput,
-    pill: elements.statusRegister,
-  },
-  authenticate: {
-    output: elements.authenticateOutput,
-    pill: elements.statusAuthenticate,
-  },
-};
+  if (setupState.passkeyWarning) {
+    setText(root, '#register-output', setupState.passkeyWarning);
+    setText(root, '#authenticate-output', setupState.passkeyWarning);
+  }
+}
 
-void initialize();
+export function renderApiReference(root, apiReference) {
+  const container = query(root, '#api-reference-list');
 
-async function initialize() {
-  hydrateState();
-  renderSetupHints();
-  wireEvents();
-
-  if (!sdk) {
-    elements.statusConfig.textContent = 'SDK missing';
-    elements.setupWarning.hidden = false;
-    elements.setupWarning.textContent =
-      'MiniAuth SDK did not load. Point this page at an auth server SDK URL and make sure that server was started with --origin matching this page origin.';
-    disableFlowButtons();
-    renderState();
+  if (!container) {
     return;
   }
 
-  sdk.session.onChange(() => renderState());
-  renderState();
+  container.innerHTML = apiReference
+    .map(
+      (entry) =>
+        `<article><h3>${escapeHtml(entry.method)} ${escapeHtml(entry.path)}</h3><p>${escapeHtml(entry.when)}</p><details><summary>${escapeHtml(entry.detailsLabel)}</summary><pre>${escapeHtml(entry.request)}</pre><pre>${escapeHtml(entry.response)}</pre></details></article>`,
+    )
+    .join('');
+  container.textContent = container.innerHTML;
+}
 
-  try {
-    await sdk.ready;
-    renderState();
-  } catch (error) {
-    state.latestAction = 'SDK startup recovery';
-    state.latestResult = formatError(error);
-    renderState();
-  }
-
-  if (!window.PublicKeyCredential) {
-    setSectionResult(
-      'register',
-      'error',
-      'This browser does not support WebAuthn / passkeys.',
-    );
-    setSectionResult(
-      'authenticate',
-      'error',
-      'This browser does not support WebAuthn / passkeys.',
-    );
-    elements.registerButton.disabled = true;
-    elements.authenticateButton.disabled = true;
+export function disableFlowButtons(root) {
+  for (const selector of [
+    '#email-start-button',
+    '#email-verify-button',
+    '#register-button',
+    '#authenticate-button',
+    '#clear-state-button',
+  ]) {
+    const element = query(root, selector);
+    if (element) {
+      element.disabled = true;
+    }
   }
 }
 
-function wireEvents() {
-  elements.email.addEventListener('input', () => {
-    state.email = elements.email.value.trim();
-    persistState();
-  });
+export async function loadSdkScript(
+  setupState,
+  { document = globalThis.document } = {},
+) {
+  const script = document.createElement('script');
+  script.src = setupState.sdkScriptUrl;
+  script.dataset.miniAuthSdk = 'true';
 
-  elements.emailStartButton.addEventListener('click', handleEmailStart);
-  elements.emailVerifyButton.addEventListener('click', handleEmailVerify);
-  elements.registerButton.addEventListener('click', handleRegisterPasskey);
-  elements.authenticateButton.addEventListener(
-    'click',
-    handleAuthenticatePasskey,
-  );
-  elements.clearStateButton.addEventListener('click', clearState);
+  const loaded = waitForScript(script);
+  if (typeof document.body.appendChild === 'function') {
+    document.body.appendChild(script);
+  } else {
+    document.body.append(script);
+  }
+
+  await loaded;
 }
 
-async function handleEmailStart() {
-  const email = elements.email.value.trim();
+export function createDemoRuntime({
+  root,
+  setupState,
+  history,
+  localStorage,
+  location,
+  windowObject,
+}) {
+  const elements = getElements(root);
+  const sectionViews = getSectionViews(elements);
+  const state = {
+    email: '',
+    latestAction: DEFAULT_LATEST_ACTION,
+    latestResult: DEFAULT_LATEST_RESULT,
+  };
+  let sdk = null;
+
+  return {
+    hydrateState() {
+      const saved = parseJsonSafe(localStorage?.getItem(STORAGE_KEY) || '');
+
+      if (saved && typeof saved === 'object') {
+        state.email = typeof saved.email === 'string' ? saved.email : '';
+      }
+
+      if (elements.baseUrl) {
+        elements.baseUrl.value = setupState.sdkScriptUrl || DEFAULT_SDK_URL;
+      }
+
+      if (elements.email) {
+        elements.email.value = state.email;
+      }
+    },
+
+    wireEvents() {
+      elements.email?.addEventListener('input', () => {
+        state.email = elements.email.value.trim();
+        persistState(localStorage, state.email);
+      });
+
+      elements.sdkOriginInput?.addEventListener('change', () => {
+        handleSdkOriginChange({
+          history,
+          location,
+          value: elements.sdkOriginInput.value,
+          windowObject,
+        });
+      });
+
+      elements.emailStartButton?.addEventListener('click', () =>
+        handleEmailStart({
+          elements,
+          renderState,
+          sdk,
+          sectionViews,
+          state,
+          localStorage,
+        }),
+      );
+      elements.emailVerifyButton?.addEventListener('click', () =>
+        handleEmailVerify({
+          elements,
+          renderState,
+          sdk,
+          sectionViews,
+          state,
+          localStorage,
+        }),
+      );
+      elements.registerButton?.addEventListener('click', () =>
+        handleRegisterPasskey({ renderState, sdk, sectionViews, state }),
+      );
+      elements.authenticateButton?.addEventListener('click', () =>
+        handleAuthenticatePasskey({ renderState, sdk, sectionViews, state }),
+      );
+      elements.clearStateButton?.addEventListener('click', () =>
+        clearState({
+          elements,
+          renderState,
+          sdk,
+          sectionViews,
+          state,
+          localStorage,
+        }),
+      );
+    },
+
+    attachSdk(nextSdk) {
+      sdk = nextSdk || null;
+
+      if (sdk?.session?.onChange) {
+        sdk.session.onChange(() => renderState());
+      }
+    },
+
+    async completeStartup() {
+      if (!sdk) {
+        this.handleSdkLoadFailure(new Error('SDK global was not initialized.'));
+        return;
+      }
+
+      renderState();
+
+      try {
+        await sdk.ready;
+        renderState();
+      } catch (error) {
+        state.latestAction = 'SDK startup recovery';
+        state.latestResult = formatError(error);
+        renderState();
+      }
+
+      const passkeyBlockReason = getPasskeyBlockReason(
+        setupState,
+        windowObject,
+      );
+      if (passkeyBlockReason) {
+        setSectionResult(sectionViews, 'register', 'error', passkeyBlockReason);
+        setSectionResult(
+          sectionViews,
+          'authenticate',
+          'error',
+          passkeyBlockReason,
+        );
+        if (elements.registerButton) {
+          elements.registerButton.disabled = true;
+        }
+        if (elements.authenticateButton) {
+          elements.authenticateButton.disabled = true;
+        }
+      }
+    },
+
+    handleConfigError(message) {
+      state.latestAction = 'Runtime blocked';
+      state.latestResult = message;
+      if (elements.statusConfig) {
+        elements.statusConfig.textContent = 'Config error';
+      }
+      disableFlowButtons(root);
+      renderState();
+    },
+
+    handleSdkLoadFailure(error) {
+      state.latestAction = 'SDK bootstrap';
+      state.latestResult = `MiniAuth SDK did not load: ${formatError(error)}`;
+      if (elements.statusConfig) {
+        elements.statusConfig.textContent = 'SDK missing';
+      }
+      disableFlowButtons(root);
+      renderState();
+    },
+
+    renderState,
+  };
+
+  function renderState() {
+    const snapshot = sdk?.session?.getState?.();
+
+    if (elements.accessToken) {
+      elements.accessToken.value = snapshot?.accessToken || '';
+    }
+    if (elements.refreshToken) {
+      elements.refreshToken.value = snapshot?.refreshToken || '';
+    }
+    if (elements.requestId) {
+      elements.requestId.value = snapshot?.status || 'sdk-unavailable';
+    }
+    if (elements.latestRequest) {
+      elements.latestRequest.textContent = state.latestAction;
+    }
+    if (elements.latestResponse) {
+      elements.latestResponse.textContent = state.latestResult;
+    }
+    if (elements.statusConfig) {
+      elements.statusConfig.textContent =
+        snapshot?.status || elements.statusConfig.textContent || 'Ready';
+    }
+  }
+}
+
+function getElements(root) {
+  return {
+    baseUrl: query(root, '#base-url'),
+    sdkOriginInput: query(root, '#sdk-origin-input'),
+    email: query(root, '#email'),
+    otpCode: query(root, '#otp-code'),
+    accessToken: query(root, '#access-token'),
+    refreshToken: query(root, '#refresh-token'),
+    requestId: query(root, '#request-id'),
+    latestRequest: query(root, '#latest-request'),
+    latestResponse: query(root, '#latest-response'),
+    emailStartOutput: query(root, '#email-start-output'),
+    emailVerifyOutput: query(root, '#email-verify-output'),
+    registerOutput: query(root, '#register-output'),
+    authenticateOutput: query(root, '#authenticate-output'),
+    emailStartButton: query(root, '#email-start-button'),
+    emailVerifyButton: query(root, '#email-verify-button'),
+    registerButton: query(root, '#register-button'),
+    authenticateButton: query(root, '#authenticate-button'),
+    clearStateButton: query(root, '#clear-state-button'),
+    statusConfig: query(root, '#status-config'),
+    statusEmailStart: query(root, '#status-email-start'),
+    statusEmailVerify: query(root, '#status-email-verify'),
+    statusRegister: query(root, '#status-register'),
+    statusAuthenticate: query(root, '#status-authenticate'),
+  };
+}
+
+function getSectionViews(elements) {
+  return {
+    'email-start': {
+      output: elements.emailStartOutput,
+      pill: elements.statusEmailStart,
+    },
+    'email-verify': {
+      output: elements.emailVerifyOutput,
+      pill: elements.statusEmailVerify,
+    },
+    register: {
+      output: elements.registerOutput,
+      pill: elements.statusRegister,
+    },
+    authenticate: {
+      output: elements.authenticateOutput,
+      pill: elements.statusAuthenticate,
+    },
+  };
+}
+
+async function handleEmailStart({
+  elements,
+  renderState,
+  sdk,
+  sectionViews,
+  state,
+  localStorage,
+}) {
+  const email = elements.email?.value.trim() || '';
 
   if (!email) {
-    setSectionResult('email-start', 'error', 'Email is required.');
+    setSectionResult(
+      sectionViews,
+      'email-start',
+      'error',
+      'Email is required.',
+    );
     return;
   }
 
   state.email = email;
-  persistState();
+  persistState(localStorage, state.email);
   state.latestAction = 'MiniAuth.email.start()';
-  setSectionLoading('email-start', 'Sending OTP...');
+  setSectionLoading(sectionViews, 'email-start', 'Sending OTP...');
   renderState();
 
   try {
     const result = await sdk.email.start({ email });
     state.latestResult = formatValue(result);
-    setSectionResult('email-start', 'success', formatValue(result));
+    setSectionResult(
+      sectionViews,
+      'email-start',
+      'success',
+      formatValue(result),
+    );
     renderState();
   } catch (error) {
     state.latestResult = formatError(error);
-    setSectionResult('email-start', 'error', formatError(error));
+    setSectionResult(sectionViews, 'email-start', 'error', formatError(error));
     renderState();
   }
 }
 
-async function handleEmailVerify() {
-  const email = elements.email.value.trim();
-  const code = elements.otpCode.value.trim();
+async function handleEmailVerify({
+  elements,
+  renderState,
+  sdk,
+  sectionViews,
+  state,
+  localStorage,
+}) {
+  const email = elements.email?.value.trim() || '';
+  const code = elements.otpCode?.value.trim() || '';
 
   if (!email || !code) {
     setSectionResult(
+      sectionViews,
       'email-verify',
       'error',
       'Email and OTP code are required.',
@@ -158,87 +384,85 @@ async function handleEmailVerify() {
   }
 
   state.email = email;
-  persistState();
+  persistState(localStorage, state.email);
   state.latestAction = 'MiniAuth.email.verify()';
-  setSectionLoading('email-verify', 'Verifying OTP...');
+  setSectionLoading(sectionViews, 'email-verify', 'Verifying OTP...');
   renderState();
 
   try {
     const session = await sdk.email.verify({ email, code });
-    state.latestResult = formatValue({
-      session,
-      me: sdk.me.get(),
-    });
-    setSectionResult(
-      'email-verify',
-      'success',
-      formatValue({
-        session,
-        me: sdk.me.get(),
-      }),
-    );
+    const result = formatValue({ session, me: sdk.me.get() });
+    state.latestResult = result;
+    setSectionResult(sectionViews, 'email-verify', 'success', result);
     renderState();
   } catch (error) {
     state.latestResult = formatError(error);
-    setSectionResult('email-verify', 'error', formatError(error));
+    setSectionResult(sectionViews, 'email-verify', 'error', formatError(error));
     renderState();
   }
 }
 
-async function handleRegisterPasskey() {
+async function handleRegisterPasskey({
+  renderState,
+  sdk,
+  sectionViews,
+  state,
+}) {
   state.latestAction = 'MiniAuth.webauthn.register()';
-  setSectionLoading('register', 'Creating passkey...');
+  setSectionLoading(sectionViews, 'register', 'Creating passkey...');
   renderState();
 
   try {
     const verify = await sdk.webauthn.register();
     const me = await sdk.me.reload();
-    state.latestResult = formatValue({ verify, me });
-    setSectionResult('register', 'success', formatValue({ verify, me }));
+    const result = formatValue({ verify, me });
+    state.latestResult = result;
+    setSectionResult(sectionViews, 'register', 'success', result);
     renderState();
   } catch (error) {
     state.latestResult = formatError(error);
-    setSectionResult('register', 'error', formatError(error));
+    setSectionResult(sectionViews, 'register', 'error', formatError(error));
     renderState();
   }
 }
 
-async function handleAuthenticatePasskey() {
+async function handleAuthenticatePasskey({
+  renderState,
+  sdk,
+  sectionViews,
+  state,
+}) {
   state.latestAction = 'MiniAuth.webauthn.authenticate()';
-  setSectionLoading('authenticate', 'Signing in with passkey...');
+  setSectionLoading(sectionViews, 'authenticate', 'Signing in with passkey...');
   renderState();
 
   try {
     const session = await sdk.webauthn.authenticate();
-    state.latestResult = formatValue({
-      session,
-      me: sdk.me.get(),
-    });
-    setSectionResult(
-      'authenticate',
-      'success',
-      formatValue({
-        session,
-        me: sdk.me.get(),
-      }),
-    );
+    const result = formatValue({ session, me: sdk.me.get() });
+    state.latestResult = result;
+    setSectionResult(sectionViews, 'authenticate', 'success', result);
     renderState();
   } catch (error) {
     state.latestResult = formatError(error);
-    setSectionResult('authenticate', 'error', formatError(error));
+    setSectionResult(sectionViews, 'authenticate', 'error', formatError(error));
     renderState();
   }
 }
 
-async function clearState() {
+async function clearState({
+  elements,
+  renderState,
+  sdk,
+  sectionViews,
+  state,
+  localStorage,
+}) {
   let logoutError = null;
 
-  if (sdk) {
-    try {
-      await sdk.session.logout();
-    } catch (error) {
-      logoutError = error;
-    }
+  try {
+    await sdk?.session?.logout?.();
+  } catch (error) {
+    logoutError = error;
   }
 
   state.email = '';
@@ -246,102 +470,55 @@ async function clearState() {
   state.latestResult = logoutError
     ? `Local demo state cleared. SDK logout failed: ${formatError(logoutError)}`
     : 'Local demo state cleared.';
-  persistState();
-  elements.email.value = '';
-  elements.otpCode.value = '';
-  elements.accessToken.value = '';
-  elements.refreshToken.value = '';
-  elements.requestId.value = logoutError ? 'logout-failed' : 'anonymous';
-  elements.statusConfig.textContent = logoutError
-    ? 'Logout failed'
-    : 'anonymous';
+  persistState(localStorage, '');
 
-  for (const view of Object.values(sectionViews)) {
-    setPillState(view.pill, 'Idle', '');
-    view.output.textContent = 'No request yet.';
+  for (const input of [
+    elements.email,
+    elements.otpCode,
+    elements.accessToken,
+    elements.refreshToken,
+  ]) {
+    if (input) {
+      input.value = '';
+    }
+  }
+  if (elements.requestId) {
+    elements.requestId.value = logoutError ? 'logout-failed' : 'anonymous';
+  }
+  if (elements.statusConfig) {
+    elements.statusConfig.textContent = logoutError
+      ? 'Logout failed'
+      : 'anonymous';
   }
 
-  if (!logoutError) {
-    renderState();
-  } else {
-    elements.latestRequest.textContent = state.latestAction;
-    elements.latestResponse.textContent = state.latestResult;
+  for (const name of Object.keys(sectionViews)) {
+    setSectionResult(sectionViews, name, 'idle', DEFAULT_LATEST_ACTION);
   }
+
+  renderState();
 }
 
-function hydrateState() {
-  const saved = parseJsonSafe(localStorage.getItem(storageKey) || '');
-
-  if (saved && typeof saved === 'object') {
-    state.email = typeof saved.email === 'string' ? saved.email : '';
-  }
-
-  elements.baseUrl.value =
-    window.__MINI_AUTH_SDK_URL__ ||
-    document.querySelector('script[data-mini-auth-sdk]')?.src ||
-    'http://127.0.0.1:7777/sdk/singleton-iife.js';
-  elements.email.value = state.email;
-}
-
-function persistState() {
-  localStorage.setItem(
-    storageKey,
-    JSON.stringify({
-      email: state.email,
-    }),
+function handleSdkOriginChange({ history, location, value, windowObject }) {
+  const params = new URLSearchParams(location.search);
+  params.set('sdk-origin', value.trim());
+  const search = params.toString();
+  history.replaceState(
+    {},
+    '',
+    `${location.pathname}${search ? `?${search}` : ''}${location.hash}`,
   );
+  windowObject.location.reload();
 }
 
-function renderState() {
-  const snapshot = sdk?.session.getState();
-
-  elements.accessToken.value = snapshot?.accessToken || '';
-  elements.refreshToken.value = snapshot?.refreshToken || '';
-  elements.requestId.value = snapshot?.status || 'sdk-unavailable';
-  elements.latestRequest.textContent = state.latestAction;
-  elements.latestResponse.textContent = state.latestResult;
-  elements.statusConfig.textContent = snapshot?.status || 'Ready';
-}
-
-function renderSetupHints() {
-  const setupState = getDemoSetupState({
-    origin: window.location.origin,
-    protocol: window.location.protocol,
-    hostname: window.location.hostname,
-    sdkUrl: elements.baseUrl.value,
-  });
-
-  elements.pageOrigin.textContent = setupState.currentOrigin;
-  elements.pageRpId.textContent = setupState.currentRpId;
-  elements.originCommand.textContent = setupState.startupCommand;
-  elements.setupWarning.textContent = setupState.corsWarning;
-  elements.setupWarning.hidden = false;
-
-  if (setupState.passkeyWarning && window.PublicKeyCredential) {
-    const message = `${setupState.passkeyWarning}\n\nKeep --origin ${setupState.suggestedOrigin} for CORS, but use --rp-id ${setupState.suggestedRpId} and open this page on localhost or an HTTPS domain for passkeys.`;
-
-    setSectionResult('register', 'error', message);
-    setSectionResult('authenticate', 'error', message);
-    elements.registerButton.disabled = true;
-    elements.authenticateButton.disabled = true;
+function setSectionLoading(sectionViews, name, message) {
+  const view = sectionViews[name];
+  setPillState(view?.pill, 'Loading', 'loading');
+  if (view?.output) {
+    view.output.textContent = message;
   }
 }
 
-function disableFlowButtons() {
-  elements.emailStartButton.disabled = true;
-  elements.emailVerifyButton.disabled = true;
-  elements.registerButton.disabled = true;
-  elements.authenticateButton.disabled = true;
-  elements.clearStateButton.disabled = true;
-}
-
-function setSectionLoading(name, message) {
-  const view = sectionViews[name];
-  setPillState(view.pill, 'Loading', 'loading');
-  view.output.textContent = message;
-}
-
-function setSectionResult(name, stateName, message) {
+function setSectionResult(sectionViews, name, stateName, message) {
   const view = sectionViews[name];
   const label =
     stateName === 'success'
@@ -349,17 +526,77 @@ function setSectionResult(name, stateName, message) {
       : stateName === 'error'
         ? 'Error'
         : 'Idle';
-  setPillState(view.pill, label, stateName);
-  view.output.textContent = message;
+  setPillState(view?.pill, label, stateName === 'idle' ? '' : stateName);
+  if (view?.output) {
+    view.output.textContent = message;
+  }
 }
 
 function setPillState(element, label, className) {
-  element.textContent = label;
-  element.classList.remove('loading', 'error', 'success');
-
-  if (className) {
-    element.classList.add(className);
+  if (!element) {
+    return;
   }
+
+  element.textContent = label;
+  element.classList?.remove?.('loading', 'error', 'success');
+  if (className) {
+    element.classList?.add?.(className);
+  }
+}
+
+function persistState(localStorage, email) {
+  localStorage?.setItem(
+    STORAGE_KEY,
+    JSON.stringify({
+      email,
+    }),
+  );
+}
+
+function getPasskeyBlockReason(setupState, windowObject) {
+  if (setupState.passkeyWarning) {
+    return setupState.passkeyWarning;
+  }
+
+  if (!windowObject.PublicKeyCredential) {
+    return BROWSER_PASSKEY_WARNING;
+  }
+
+  return '';
+}
+
+function waitForScript(script) {
+  return new Promise((resolve, reject) => {
+    script.addEventListener('load', () => resolve(script), { once: true });
+    script.addEventListener(
+      'error',
+      () => reject(new Error(`Failed to load ${script.src}`)),
+      { once: true },
+    );
+  });
+}
+
+function setList(root, selector, items) {
+  const element = query(root, selector);
+  if (!element) {
+    return;
+  }
+
+  element.innerHTML = items
+    .map((item) => `<li>${escapeHtml(item)}</li>`)
+    .join('');
+  element.textContent = items.join('\n');
+}
+
+function setText(root, selector, value) {
+  const element = query(root, selector);
+  if (element) {
+    element.textContent = value;
+  }
+}
+
+function query(root, selector) {
+  return root?.querySelector?.(selector) ?? null;
 }
 
 function parseJsonSafe(value) {
@@ -392,4 +629,22 @@ function formatError(error) {
   }
 
   return String(error);
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
+}
+
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+  const hooks =
+    window.__MINI_AUTH_TEST_HOOKS__ ||
+    globalThis.__MINI_AUTH_TEST_HOOKS__ ||
+    {};
+  void bootstrapDemoPage({ loadSdkScript: hooks.loadSdkScript }).catch(
+    () => {},
+  );
 }
