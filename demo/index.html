@@ -3,58 +3,62 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>mini-auth Demo Console</title>
+    <title>mini-auth · Single-page demo docs</title>
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
     <main class="page-shell">
-      <section class="hero">
-        <p class="eyebrow">mini-auth / manual test console</p>
-        <h1>Test email OTP and passkey flows from one page</h1>
-        <p class="hero-copy">
-          A lightweight browser UI for manually exercising the server APIs with
-          real requests and real WebAuthn ceremonies.
-        </p>
-      </section>
-
-      <section class="setup-note panel">
-        <div>
-          <h2>Setup</h2>
-          <p>
-            Load this page from any static server, then start mini-auth on
-            another origin with <code>--issuer</code> set to the auth server
-            origin and <code>--origin</code> set to the current page origin
-            shown below.
+      <section class="hero panel section-grid">
+        <div class="doc-prose hero-copy-block">
+          <p class="eyebrow">mini-auth</p>
+          <h1 id="hero-title">mini-auth</h1>
+          <p id="hero-value-prop" class="lede">
+            A small, self-hosted auth server for apps that just need auth.
           </p>
-          <p>
-            If your Auth Server is not at <code>http://127.0.0.1:7777</code>,
-            open this page with <code>?sdk-origin=https://your-auth-origin</code>.
+          <p id="hero-audience">
+            For teams that want email OTP, passkeys, JWTs, JWKS, and SQLite
+            without adopting a larger platform.
           </p>
-          <p id="setup-warning" hidden></p>
+          <ul id="hero-capabilities" class="capability-list">
+            <li>email OTP</li>
+            <li>passkey</li>
+            <li>JWT</li>
+            <li>JWKS</li>
+            <li>SQLite</li>
+            <li>self-hosted</li>
+          </ul>
         </div>
-        <div class="setup-grid">
-          <div>
-            <h3>Start Auth Server</h3>
-            <pre id="origin-command">
-mini-auth start ... --origin http://127.0.0.1:8080</pre
-            >
+
+        <div class="panel inset-panel hero-side">
+          <p class="step-label">Shortest path</p>
+          <h2>Bring your own auth origin</h2>
+          <p>
+            Point this page at your mini-auth server, keep the page origin in
+            <code>--origin</code>, then verify email OTP and passkeys from the
+            same page.
+          </p>
+
+          <label class="field">
+            <span>Auth server origin</span>
+            <input
+              id="sdk-origin-input"
+              type="url"
+              spellcheck="false"
+              placeholder="https://auth.example.com"
+            />
+          </label>
+
+          <p id="config-error" class="callout callout-error" hidden></p>
+
+          <div class="inline-meta">
+            <span>Page origin: <strong id="page-origin"></strong></span>
+            <span>Suggested RP ID: <strong id="page-rp-id"></strong></span>
           </div>
-        </div>
-      </section>
 
-      <div class="workspace">
-        <section class="flow-column">
-          <article class="panel card">
-            <div class="card-head">
-              <div>
-                <p class="step-label">Config</p>
-                <h2>SDK Config</h2>
-              </div>
-              <span class="status-pill" id="status-config">Ready</span>
-            </div>
-
-            <label class="field">
-              <span>SDK script</span>
+          <details class="doc-details">
+            <summary>Show SDK runtime target</summary>
+            <label class="field compact-field">
+              <span>SDK script URL</span>
               <input
                 id="base-url"
                 type="text"
@@ -62,156 +66,221 @@ mini-auth start ... --origin http://127.0.0.1:8080</pre
                 placeholder="http://127.0.0.1:7777/sdk/singleton-iife.js"
               />
             </label>
+          </details>
+        </div>
+      </section>
 
-            <div class="inline-meta">
-              <span
-                >Current page origin: <strong id="page-origin"></strong
-              ></span>
-              <span>Suggested RP ID: <strong id="page-rp-id"></strong></span>
+      <section class="quick-start panel section-grid">
+        <div class="doc-prose">
+          <p class="eyebrow">Quick start</p>
+          <h2>Start mini-auth with this page origin</h2>
+          <p>
+            The command below stays aligned with this page and your chosen auth
+            origin. Copy it first, then come back to the playground.
+          </p>
+          <p id="setup-warning" class="callout"></p>
+        </div>
+
+        <div class="doc-stack">
+          <article class="panel inset-panel doc-code-card">
+            <div class="card-head compact-head">
+              <div>
+                <p class="step-label">Command</p>
+                <h3>CLI startup</h3>
+              </div>
             </div>
+            <pre id="origin-command" class="doc-code">
+mini-auth start ... --origin http://127.0.0.1:8080</pre
+            >
           </article>
 
-          <article class="panel card">
-            <div class="card-head">
-              <div>
-                <p class="step-label">Step 1</p>
-                <h2>Email Start</h2>
+          <details class="doc-details panel inset-panel">
+            <summary>Show browser script snippet</summary>
+            <pre id="sdk-script-snippet" class="doc-code"></pre>
+          </details>
+        </div>
+      </section>
+
+      <section class="playground panel">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Playground</p>
+            <h2>Run the real browser flow</h2>
+          </div>
+          <p class="section-intro">
+            Keep the same controls from the original demo, but place them inside
+            a page that also explains how to wire mini-auth in production.
+          </p>
+        </div>
+
+        <div class="playground-grid">
+          <div class="flow-column">
+            <article class="panel inset-panel card">
+              <div class="card-head">
+                <div>
+                  <p class="step-label">Config</p>
+                  <h3>SDK config</h3>
+                </div>
+                <span class="status-pill" id="status-config">Ready</span>
               </div>
-              <span class="status-pill" id="status-email-start">Idle</span>
-            </div>
 
-            <label class="field">
-              <span>Email</span>
-              <input id="email" type="email" placeholder="user@example.com" />
-            </label>
+              <p class="card-copy">
+                This page loads the singleton SDK from the auth server origin so
+                the script origin stays equal to the API origin.
+              </p>
 
-            <button
-              id="email-start-button"
-              class="primary-button"
-              type="button"
-            >
-              POST /email/start
-            </button>
+              <details class="doc-details inline-details">
+                <summary>Show runtime values</summary>
+                <p>
+                  The canonical runtime values live in the hero and quick-start
+                  blocks above so docs copy and the live SDK target stay in one
+                  place.
+                </p>
+              </details>
+            </article>
 
-            <pre class="mini-output" id="email-start-output">
+            <article class="panel inset-panel card">
+              <div class="card-head">
+                <div>
+                  <p class="step-label">Step 1</p>
+                  <h3>Email start</h3>
+                </div>
+                <span class="status-pill" id="status-email-start">Idle</span>
+              </div>
+
+              <label class="field">
+                <span>Email</span>
+                <input id="email" type="email" placeholder="user@example.com" />
+              </label>
+
+              <button
+                id="email-start-button"
+                class="primary-button"
+                type="button"
+              >
+                POST /email/start
+              </button>
+
+              <pre class="mini-output" id="email-start-output">
 No request yet.</pre
-            >
-          </article>
+              >
+            </article>
 
-          <article class="panel card">
-            <div class="card-head">
-              <div>
-                <p class="step-label">Step 2</p>
-                <h2>Email Verify</h2>
+            <article class="panel inset-panel card">
+              <div class="card-head">
+                <div>
+                  <p class="step-label">Step 2</p>
+                  <h3>Email verify</h3>
+                </div>
+                <span class="status-pill" id="status-email-verify">Idle</span>
               </div>
-              <span class="status-pill" id="status-email-verify">Idle</span>
-            </div>
 
-            <label class="field">
-              <span>OTP Code</span>
-              <input
-                id="otp-code"
-                type="text"
-                inputmode="numeric"
-                placeholder="123456"
-              />
-            </label>
+              <label class="field">
+                <span>OTP code</span>
+                <input
+                  id="otp-code"
+                  type="text"
+                  inputmode="numeric"
+                  placeholder="123456"
+                />
+              </label>
 
-            <button
-              id="email-verify-button"
-              class="primary-button"
-              type="button"
-            >
-              POST /email/verify
-            </button>
+              <button
+                id="email-verify-button"
+                class="primary-button"
+                type="button"
+              >
+                POST /email/verify
+              </button>
 
-            <pre class="mini-output" id="email-verify-output">
+              <pre class="mini-output" id="email-verify-output">
 No request yet.</pre
-            >
-          </article>
+              >
+            </article>
 
-          <article class="panel card">
-            <div class="card-head">
-              <div>
-                <p class="step-label">Step 3</p>
-                <h2>Register Passkey</h2>
+            <article class="panel inset-panel card">
+              <div class="card-head">
+                <div>
+                  <p class="step-label">Step 3</p>
+                  <h3>Register passkey</h3>
+                </div>
+                <span class="status-pill" id="status-register">Idle</span>
               </div>
-              <span class="status-pill" id="status-register">Idle</span>
-            </div>
 
-            <p class="card-copy">
-              Uses `window.MiniAuth.webauthn.register()` to fetch options,
-              complete the browser passkey prompt, and verify the credential.
-            </p>
+              <p class="card-copy">
+                Uses <code>window.MiniAuth.webauthn.register()</code> to fetch
+                options, complete the browser passkey prompt, and verify the
+                credential.
+              </p>
 
-            <button id="register-button" class="primary-button" type="button">
-              Create and bind passkey
-            </button>
+              <button id="register-button" class="primary-button" type="button">
+                Create and bind passkey
+              </button>
 
-            <pre class="mini-output" id="register-output">No request yet.</pre>
-          </article>
+              <pre class="mini-output" id="register-output">No request yet.</pre>
+            </article>
 
-          <article class="panel card">
-            <div class="card-head">
-              <div>
-                <p class="step-label">Step 4</p>
-                <h2>Authenticate Passkey</h2>
+            <article class="panel inset-panel card">
+              <div class="card-head">
+                <div>
+                  <p class="step-label">Step 4</p>
+                  <h3>Authenticate passkey</h3>
+                </div>
+                <span class="status-pill" id="status-authenticate">Idle</span>
               </div>
-              <span class="status-pill" id="status-authenticate">Idle</span>
-            </div>
 
-            <p class="card-copy">
-              Starts a username-less passkey login through
-              `window.MiniAuth.webauthn.authenticate()` and waits until
-              session + `/me` state are ready.
-            </p>
+              <p class="card-copy">
+                Starts a username-less passkey login through
+                <code>window.MiniAuth.webauthn.authenticate()</code> and waits
+                until session + <code>/me</code> state are ready.
+              </p>
 
-            <button
-              id="authenticate-button"
-              class="primary-button"
-              type="button"
-            >
-              Sign in with passkey
-            </button>
+              <button
+                id="authenticate-button"
+                class="primary-button"
+                type="button"
+              >
+                Sign in with passkey
+              </button>
 
-            <pre class="mini-output" id="authenticate-output">
+              <pre class="mini-output" id="authenticate-output">
 No request yet.</pre
-            >
-          </article>
-        </section>
-
-        <aside class="state-column panel">
-          <div class="card-head">
-            <div>
-              <p class="step-label">State</p>
-              <h2>Session / Output</h2>
-            </div>
-            <button id="clear-state-button" class="ghost-button" type="button">
-              Logout
-            </button>
+              >
+            </article>
           </div>
 
-          <div class="state-block">
-            <span class="state-label">Access token</span>
-            <textarea
-              id="access-token"
-              rows="4"
-              readonly
-              placeholder="Set after email verify or passkey auth"
-            ></textarea>
-          </div>
+          <aside class="state-column panel inset-panel">
+            <div class="card-head">
+              <div>
+                <p class="step-label">State</p>
+                <h3>Session / output</h3>
+              </div>
+              <button id="clear-state-button" class="ghost-button" type="button">
+                Logout
+              </button>
+            </div>
 
-          <div class="state-block">
-            <span class="state-label">Refresh token</span>
-            <textarea
-              id="refresh-token"
-              rows="4"
-              readonly
-              placeholder="Set after email verify or passkey auth"
-            ></textarea>
-          </div>
+            <div class="state-block">
+              <span class="state-label">Access token</span>
+              <textarea
+                id="access-token"
+                rows="4"
+                readonly
+                placeholder="Set after email verify or passkey auth"
+              ></textarea>
+            </div>
 
-          <div class="state-block">
+            <div class="state-block">
+              <span class="state-label">Refresh token</span>
+              <textarea
+                id="refresh-token"
+                rows="4"
+                readonly
+                placeholder="Set after email verify or passkey auth"
+              ></textarea>
+            </div>
+
+            <div class="state-block">
               <span class="state-label">Session status</span>
               <input
                 id="request-id"
@@ -221,22 +290,140 @@ No request yet.</pre
               />
             </div>
 
-          <div class="state-block">
-            <span class="state-label">Latest SDK action</span>
-            <pre id="latest-request">No request yet.</pre>
-          </div>
+            <div class="state-block">
+              <span class="state-label">Latest SDK action</span>
+              <pre id="latest-request">No request yet.</pre>
+            </div>
 
-          <div class="state-block">
-            <span class="state-label">Latest SDK result</span>
-            <pre id="latest-response">No response yet.</pre>
-          </div>
-        </aside>
-      </div>
+            <div class="state-block">
+              <span class="state-label">Latest SDK result</span>
+              <pre id="latest-response">No response yet.</pre>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="how-it-works panel section-grid">
+        <div class="doc-prose">
+          <p class="eyebrow">How it works</p>
+          <h2>One page, one shared config story</h2>
+          <p>
+            The docs, snippets, and playground should all update from the same
+            derived setup state.
+          </p>
+        </div>
+
+        <div class="panel inset-panel">
+          <ul id="how-it-works-list" class="doc-list">
+            <li>The page origin becomes the recommended <code>--origin</code>.</li>
+            <li>
+              The auth origin becomes the SDK script origin and the API origin.
+            </li>
+            <li>
+              WebAuthn and CORS depend on those values being configured together.
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="api-reference panel section-grid">
+        <div class="doc-prose">
+          <p class="eyebrow">API reference</p>
+          <h2>Minimal calls for the common path</h2>
+          <p>
+            Keep the shortest request path visible first, then expand details per
+            endpoint only when needed.
+          </p>
+        </div>
+
+        <div id="api-reference-list" class="doc-stack">
+          <article class="panel inset-panel api-placeholder">
+            <div class="card-head compact-head">
+              <div>
+                <p class="step-label">Example</p>
+                <h3>POST /email/start</h3>
+              </div>
+            </div>
+            <p class="card-copy">Render target for runtime-generated API entries.</p>
+            <details class="doc-details">
+              <summary>Show request and response</summary>
+              <pre class="doc-code">Waiting for runtime content.</pre>
+            </details>
+          </article>
+        </div>
+      </section>
+
+      <section class="backend-jwt panel section-grid">
+        <div class="doc-prose">
+          <p class="eyebrow">Backend JWT</p>
+          <h2>Verify access tokens locally</h2>
+          <p>
+            The primary backend path is local JWT verification with JWKS, not a
+            round-trip to the auth server on every request.
+          </p>
+        </div>
+
+        <div class="doc-stack">
+          <article class="panel inset-panel doc-code-card">
+            <div class="card-head compact-head">
+              <div>
+                <p class="step-label">jose</p>
+                <h3>Node / TypeScript snippet</h3>
+              </div>
+            </div>
+            <pre id="jose-snippet" class="doc-code"></pre>
+          </article>
+
+          <details id="backend-notes-disclosure" class="doc-details panel inset-panel">
+            <summary>More backend JWT notes</summary>
+            <ul id="backend-notes-list" class="doc-list"></ul>
+          </details>
+        </div>
+      </section>
+
+      <section class="deployment-notes panel section-grid">
+        <div class="doc-prose">
+          <p class="eyebrow">Deployment notes</p>
+          <h2>Static hosting stays first-class</h2>
+          <p>
+            Use relative local assets for this page, then configure mini-auth to
+            trust whatever final page origin you deploy.
+          </p>
+        </div>
+
+        <div class="panel inset-panel">
+          <ul id="deployment-notes-list" class="doc-list">
+            <li>GitHub Pages project paths should still load <code>./style.css</code>.</li>
+            <li>Custom domains should keep a stable browser origin for passkeys.</li>
+            <li>The auth server still needs the page origin in <code>--origin</code>.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="known-issues panel section-grid">
+        <div class="doc-prose">
+          <p class="eyebrow">Known issues</p>
+          <h2>Current caveats, not permanent contracts</h2>
+          <p>
+            Call out the real issues that affect integration, but avoid turning
+            temporary behavior into a product promise.
+          </p>
+        </div>
+
+        <div class="panel inset-panel">
+          <ul id="known-issues-list" class="doc-list">
+            <li>Passkeys need a valid RP ID and a compatible browser context.</li>
+            <li>Cross-origin pages must be listed in <code>--origin</code>.</li>
+            <li>Multi-tab refresh races are a current SDK bug.</li>
+          </ul>
+        </div>
+      </section>
     </main>
 
     <script>
       const params = new URLSearchParams(window.location.search);
       const sdkOrigin = params.get('sdk-origin') || 'http://127.0.0.1:7777';
+      window.__MINI_AUTH_SDK_ORIGIN__ = sdkOrigin;
       const sdkUrl = new URL('/sdk/singleton-iife.js', sdkOrigin).toString();
       window.__MINI_AUTH_SDK_URL__ = sdkUrl;
 
