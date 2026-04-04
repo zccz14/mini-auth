@@ -3,15 +3,13 @@ export function getDemoSetupState(locationLike) {
   const protocol = locationLike.protocol;
   const hostname = locationLike.hostname;
   const pageHostIsIpAddress = isIpAddressHost(hostname);
-  const hasExternalSdkOriginInput = Object.hasOwn(
-    locationLike,
-    'sdkOriginInput',
-  );
   const normalizedSdkOrigin = normalizeSdkOrigin(
     locationLike.sdkOriginInput ?? getOriginFromSdkUrl(locationLike.sdkUrl),
   );
+  const corsWarning =
+    'Start mini-auth with --origin set to this page origin so the browser can call the auth server cross-origin.';
 
-  if (!normalizedSdkOrigin.ok && hasExternalSdkOriginInput) {
+  if (!normalizedSdkOrigin.ok) {
     return {
       currentOrigin: origin,
       currentRpId: hostname,
@@ -23,35 +21,30 @@ export function getDemoSetupState(locationLike) {
       jwksUrl: '',
       configError: normalizedSdkOrigin.error,
       webauthnReady: false,
-      corsWarning:
-        'Start mini-auth with --origin set to this page origin so the browser can call the auth server cross-origin.',
+      corsWarning,
       passkeyWarning: '',
       startupCommand: '',
     };
   }
 
-  const sdkOrigin = normalizedSdkOrigin.ok ? normalizedSdkOrigin.value : '';
-  const sdkOriginHostname = sdkOrigin ? new URL(sdkOrigin).hostname : '';
-  const sdkHostIsIpAddress = sdkOriginHostname
-    ? isIpAddressHost(sdkOriginHostname)
-    : false;
-  const ipAddressHost = pageHostIsIpAddress || sdkHostIsIpAddress;
+  const sdkOrigin = normalizedSdkOrigin.value;
+  const suggestedRpId = new URL(sdkOrigin).hostname;
+  const rpIdIsIpAddress = isIpAddressHost(suggestedRpId);
+  const securePageForPasskeys =
+    hostname === 'localhost' || (protocol === 'https:' && !pageHostIsIpAddress);
+  const pageMatchesSuggestedRpId = doesPageMatchRpId(hostname, suggestedRpId);
   const webauthnReady =
-    !sdkHostIsIpAddress &&
-    (hostname === 'localhost' ||
-      (protocol === 'https:' && !pageHostIsIpAddress));
-  const fallbackRpId = webauthnReady ? hostname : 'localhost';
-  const corsWarning =
-    'Start mini-auth with --origin set to this page origin so the browser can call the auth server cross-origin.';
-  const passkeyWarning = sdkHostIsIpAddress
+    !rpIdIsIpAddress && securePageForPasskeys && pageMatchesSuggestedRpId;
+  const passkeyWarning = rpIdIsIpAddress
     ? 'This demo is configured against an IP-address auth server. Passkeys require a domain RP ID, so use a localhost or HTTPS domain sdk-origin instead.'
     : pageHostIsIpAddress
       ? 'This demo is running on an IP address. Passkeys require a domain RP ID, so open the demo on localhost or an HTTPS domain instead.'
-      : webauthnReady
-        ? ''
-        : 'This demo must run on localhost or an HTTPS domain before passkeys will work.';
-  const suggestedRpId = sdkOrigin ? new URL(sdkOrigin).hostname : fallbackRpId;
-  const issuer = sdkOrigin || '<auth-server-origin>';
+      : !securePageForPasskeys
+        ? 'This demo must run on localhost or an HTTPS domain before passkeys will work.'
+        : !pageMatchesSuggestedRpId
+          ? `This page origin is not compatible with the suggested RP ID ${suggestedRpId}. Open the demo on that domain or a subdomain of it before passkeys will work.`
+          : '';
+  const issuer = sdkOrigin;
 
   return {
     currentOrigin: origin,
@@ -59,17 +52,23 @@ export function getDemoSetupState(locationLike) {
     suggestedOrigin: origin,
     suggestedRpId,
     sdkOrigin,
-    sdkScriptUrl: sdkOrigin
-      ? new URL('/sdk/singleton-iife.js', sdkOrigin).toString()
-      : '',
+    sdkScriptUrl: new URL('/sdk/singleton-iife.js', sdkOrigin).toString(),
     issuer,
-    jwksUrl: sdkOrigin ? new URL('/jwks', sdkOrigin).toString() : '',
+    jwksUrl: new URL('/jwks', sdkOrigin).toString(),
     configError: '',
     webauthnReady,
     corsWarning,
     passkeyWarning,
     startupCommand: `mini-auth start ./mini-auth.sqlite --issuer ${issuer} --origin ${origin} --rp-id ${suggestedRpId}`,
   };
+}
+
+function doesPageMatchRpId(hostname, rpId) {
+  if (hostname === 'localhost' || rpId === 'localhost') {
+    return hostname === rpId;
+  }
+
+  return hostname === rpId || hostname.endsWith(`.${rpId}`);
 }
 
 function getOriginFromSdkUrl(sdkUrl) {

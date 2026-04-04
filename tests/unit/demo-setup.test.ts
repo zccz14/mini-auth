@@ -19,6 +19,24 @@ describe('demo WebAuthn setup guidance', () => {
         issuer: 'https://auth.example.com',
         jwksUrl: 'https://auth.example.com/jwks',
         suggestedRpId: 'auth.example.com',
+        webauthnReady: false,
+      }),
+    );
+  });
+
+  it('warns when page origin is incompatible with the derived rp id', () => {
+    expect(
+      getDemoSetupState({
+        origin: 'https://docs.example.com',
+        protocol: 'https:',
+        hostname: 'docs.example.com',
+        sdkOriginInput: 'https://auth.example.com',
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        webauthnReady: false,
+        passkeyWarning:
+          'This page origin is not compatible with the suggested RP ID auth.example.com. Open the demo on that domain or a subdomain of it before passkeys will work.',
       }),
     );
   });
@@ -111,7 +129,7 @@ describe('demo WebAuthn setup guidance', () => {
     );
   });
 
-  it('falls back to a placeholder issuer when sdk url derivation fails', () => {
+  it('blocks runtime when sdk url derivation fails', () => {
     expect(
       getDemoSetupState({
         origin: 'http://localhost:8080',
@@ -121,8 +139,25 @@ describe('demo WebAuthn setup guidance', () => {
       }),
     ).toEqual(
       expect.objectContaining({
-        startupCommand:
-          'mini-auth start ./mini-auth.sqlite --issuer <auth-server-origin> --origin http://localhost:8080 --rp-id localhost',
+        configError: expect.stringContaining('sdk-origin must be an origin'),
+        suggestedRpId: '',
+        startupCommand: '',
+      }),
+    );
+  });
+
+  it('blocks runtime when sdk config is missing and cannot be derived', () => {
+    expect(
+      getDemoSetupState({
+        origin: 'http://localhost:8080',
+        protocol: 'http:',
+        hostname: 'localhost',
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        configError: expect.stringContaining('sdk-origin must be an origin'),
+        suggestedRpId: '',
+        startupCommand: '',
       }),
     );
   });
@@ -148,11 +183,11 @@ describe('demo WebAuthn setup guidance', () => {
       expect.objectContaining({
         webauthnReady: false,
         suggestedOrigin: 'http://127.0.0.1:8080',
-        suggestedRpId: 'localhost',
+        suggestedRpId: '',
+        configError: expect.stringContaining('sdk-origin must be an origin'),
         corsWarning:
           'Start mini-auth with --origin set to this page origin so the browser can call the auth server cross-origin.',
-        passkeyWarning:
-          'This demo is running on an IP address. Passkeys require a domain RP ID, so open the demo on localhost or an HTTPS domain instead.',
+        passkeyWarning: '',
       }),
     );
   });
@@ -186,9 +221,9 @@ describe('demo WebAuthn setup guidance', () => {
       expect.objectContaining({
         webauthnReady: false,
         suggestedOrigin: 'https://127.0.0.1:8443',
-        suggestedRpId: 'localhost',
-        passkeyWarning:
-          'This demo is running on an IP address. Passkeys require a domain RP ID, so open the demo on localhost or an HTTPS domain instead.',
+        suggestedRpId: '',
+        configError: expect.stringContaining('sdk-origin must be an origin'),
+        passkeyWarning: '',
       }),
     );
   });
@@ -204,19 +239,20 @@ describe('demo WebAuthn setup guidance', () => {
       expect.objectContaining({
         webauthnReady: false,
         suggestedOrigin: 'https://[::1]:8443',
-        suggestedRpId: 'localhost',
-        passkeyWarning:
-          'This demo is running on an IP address. Passkeys require a domain RP ID, so open the demo on localhost or an HTTPS domain instead.',
+        suggestedRpId: '',
+        configError: expect.stringContaining('sdk-origin must be an origin'),
+        passkeyWarning: '',
       }),
     );
   });
 
-  it('accepts localhost for local passkey testing', () => {
+  it('accepts localhost for local passkey testing when rp id matches', () => {
     expect(
       getDemoSetupState({
         origin: 'http://localhost:8080',
         protocol: 'http:',
         hostname: 'localhost',
+        sdkOriginInput: 'http://localhost:7777',
       }),
     ).toEqual(
       expect.objectContaining({
