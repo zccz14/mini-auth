@@ -400,9 +400,9 @@ No request yet.</pre
 
         <div class="panel inset-panel">
           <ul id="deployment-notes-list" class="doc-list">
-            <li>GitHub Pages project paths should still load <code>./style.css</code>.</li>
-            <li>Custom domains should keep a stable browser origin for passkeys.</li>
-            <li>The auth server still needs the page origin in <code>--origin</code>.</li>
+            <li>Publish the contents of <code>demo/</code> so <code>index.html</code>, <code>./style.css</code>, and <code>./main.js</code> stay path-safe on GitHub Pages.</li>
+            <li>Set mini-auth <code>--origin</code> to the final browser page origin, then use <code>?sdk-origin=</code> when the docs page and auth server are on different origins.</li>
+            <li>Custom GitHub Pages domains should ship a matching <code>CNAME</code> file so the browser origin stays stable for WebAuthn and CORS.</li>
           </ul>
         </div>
       </section>

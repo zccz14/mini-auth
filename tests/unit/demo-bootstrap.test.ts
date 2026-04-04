@@ -93,18 +93,19 @@ type TestEnvironment = {
   window: FakeWindow;
 };
 
-type TestGlobals = typeof globalThis & {
-  document?: FakeDocument;
-  window?: FakeWindow;
-  history?: FakeHistory;
-  localStorage?: FakeStorage;
-  location?: FakeLocation;
+type TestGlobals = {
+  [key: string]: unknown;
+  document?: unknown;
+  window?: unknown;
+  history?: unknown;
+  localStorage?: unknown;
+  location?: unknown;
   Event?: unknown;
   __MINI_AUTH_TEST_HOOKS__?: FakeWindow['__MINI_AUTH_TEST_HOOKS__'];
   MiniAuth?: FakeSdk;
 };
 
-const testGlobals = globalThis as TestGlobals;
+const testGlobals = globalThis as unknown as TestGlobals;
 
 const sampleSdkState = {
   accessToken: 'access-token',
@@ -248,6 +249,29 @@ describe('demo bootstrap', () => {
     expect(
       env.document.querySelector('#origin-command')?.textContent,
     ).toContain('--origin https://docs.example.com');
+  });
+
+  it('stays neutral when no sdk-origin is configured', async () => {
+    const env = createTestEnvironment('https://docs.example.com/demo/');
+    const { bootstrapDemoPage } = await import('../../demo/bootstrap.js');
+
+    await runBootstrap(bootstrapDemoPage, env, {
+      location: undefined,
+    });
+
+    expect(env.document.querySelector('#config-error')?.textContent).toContain(
+      'Add ?sdk-origin=',
+    );
+    expect(
+      env.document.querySelector('#latest-response')?.textContent,
+    ).toContain('Add ?sdk-origin=');
+    expect(env.document.querySelector('#status-config')?.textContent).toBe(
+      'Waiting for sdk-origin',
+    );
+    expect(env.document.querySelector('#origin-command')?.textContent).toBe('');
+    expect(env.document.querySelector('#email-start-button')?.disabled).toBe(
+      true,
+    );
   });
 
   it('keeps actions disabled until sdk.ready settles', async () => {

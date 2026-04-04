@@ -75,10 +75,13 @@ describe('demo content builders', () => {
 
   it('includes github pages and custom domain deployment notes', () => {
     const content = buildDemoContent(sampleState);
+    const deploymentText = content.deploymentNotes.join('\n');
 
-    expect(content.deploymentNotes.join('\n')).toContain('GitHub Pages');
-    expect(content.deploymentNotes.join('\n')).toContain('CNAME');
-    expect(content.deploymentNotes.join('\n')).toContain('--origin');
+    expect(deploymentText).toContain('GitHub Pages');
+    expect(deploymentText).toContain('publish the contents of demo/');
+    expect(deploymentText).toContain('CNAME');
+    expect(deploymentText).toContain('--origin');
+    expect(deploymentText).toContain('?sdk-origin=https://your-auth-origin');
   });
 
   it('keeps api examples aligned with the server auth contracts', () => {

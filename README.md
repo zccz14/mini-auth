@@ -132,7 +132,35 @@ works when mini-auth is started with `--origin http://localhost:3000` and the pa
 <script src="http://127.0.0.1:7777/sdk/singleton-iife.js"></script>
 ```
 
-The demo follows this same contract by default for direct cross-origin usage, and can optionally override the SDK script origin with `?sdk-origin=` when you want to point the page at a different auth server origin.
+The published demo/docs page does **not** auto-target localhost anymore. It stays in a neutral docs-only state until you provide `?sdk-origin=https://your-auth-origin`, which makes the playground load the SDK from that auth origin.
+
+### Publishing the single-page demo/docs
+
+The static site lives in `demo/`.
+
+- Publish the **contents of `demo/`** so `index.html`, `./style.css`, and `./main.js` stay at the final URL you want browsers to open.
+- For GitHub Pages, that means publishing `demo/` as the Pages artifact (for example via a Pages Action that uploads `demo/`, or by copying `demo/` into the branch/folder Pages serves).
+- Project Pages subpaths such as `https://<user>.github.io/mini-auth/` are fine because the demo uses relative local assets.
+- `mini-auth --origin ...` must match the final **page origin** (`window.location.origin`), not the auth server origin. Path changes like `/mini-auth/` vs `/demo/` do not change `--origin`, but moving between `https://docs.example.com` and `https://example.github.io` does.
+- If the docs page and auth server live on different origins, keep the docs page on its static host and append `?sdk-origin=https://your-auth-origin` so the page loads `/sdk/singleton-iife.js` from the auth server.
+- If you attach a custom GitHub Pages domain, publish a matching `CNAME` file in the Pages artifact/root so GitHub serves that domain consistently; then start mini-auth with `--origin https://your-domain.example`.
+
+Example:
+
+- published docs origin: `https://example.github.io`
+- auth server origin: `https://auth.example.com`
+
+Open:
+
+```text
+https://example.github.io/mini-auth/?sdk-origin=https://auth.example.com
+```
+
+Start mini-auth with:
+
+```bash
+mini-auth start ./mini-auth.sqlite --issuer https://auth.example.com --origin https://example.github.io --rp-id auth.example.com
+```
 
 ### Startup state model
 

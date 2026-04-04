@@ -1,11 +1,12 @@
+const WAITING_FOR_SDK_ORIGIN_MESSAGE =
+  'Add ?sdk-origin=https://your-auth-origin to this page URL to enable the live playground.';
+
 export function getDemoSetupState(locationLike) {
   const origin = locationLike.origin;
   const protocol = locationLike.protocol;
   const hostname = locationLike.hostname;
   const pageHostIsIpAddress = isIpAddressHost(hostname);
-  const normalizedSdkOrigin = normalizeSdkOrigin(
-    locationLike.sdkOriginInput ?? getOriginFromSdkUrl(locationLike.sdkUrl),
-  );
+  const normalizedSdkOrigin = resolveSdkOrigin(locationLike);
   const corsWarning =
     'Start mini-auth with --origin set to this page origin so the browser can call the auth server cross-origin.';
 
@@ -19,6 +20,7 @@ export function getDemoSetupState(locationLike) {
       sdkScriptUrl: '',
       issuer: '',
       jwksUrl: '',
+      configStatus: normalizedSdkOrigin.status,
       configError: normalizedSdkOrigin.error,
       webauthnReady: false,
       corsWarning,
@@ -55,6 +57,7 @@ export function getDemoSetupState(locationLike) {
     sdkScriptUrl: new URL('/sdk/singleton-iife.js', sdkOrigin).toString(),
     issuer,
     jwksUrl: new URL('/jwks', sdkOrigin).toString(),
+    configStatus: 'ready',
     configError: '',
     webauthnReady,
     corsWarning,
@@ -81,6 +84,35 @@ function getOriginFromSdkUrl(sdkUrl) {
   } catch {
     return '';
   }
+}
+
+function resolveSdkOrigin(locationLike) {
+  if (locationLike.sdkOriginInput !== undefined) {
+    return withStatus(normalizeSdkOrigin(locationLike.sdkOriginInput), 'error');
+  }
+
+  if (typeof locationLike.sdkUrl !== 'string' || !locationLike.sdkUrl) {
+    return {
+      ok: false,
+      status: 'waiting',
+      error: WAITING_FOR_SDK_ORIGIN_MESSAGE,
+    };
+  }
+
+  const derivedOrigin = getOriginFromSdkUrl(locationLike.sdkUrl);
+  if (!derivedOrigin) {
+    return withStatus(normalizeSdkOrigin(''), 'error');
+  }
+
+  return withStatus(normalizeSdkOrigin(derivedOrigin), 'ready');
+}
+
+function withStatus(result, status) {
+  if (result.ok) {
+    return { ...result, status };
+  }
+
+  return { ...result, status: 'error' };
 }
 
 function normalizeSdkOrigin(value) {

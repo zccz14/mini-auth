@@ -289,12 +289,14 @@ export function createDemoRuntime({
       }
     },
 
-    handleConfigError(message) {
+    handleConfigError(message, status = 'error') {
       sdkInteractive = false;
-      state.latestAction = 'Runtime blocked';
+      state.latestAction =
+        status === 'waiting' ? 'Playground idle' : 'Runtime blocked';
       state.latestResult = message;
       if (elements.statusConfig) {
-        elements.statusConfig.textContent = 'Config error';
+        elements.statusConfig.textContent =
+          status === 'waiting' ? 'Waiting for sdk-origin' : 'Config error';
       }
       disableFlowButtons(root);
       renderState();

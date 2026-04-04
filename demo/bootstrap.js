@@ -8,8 +8,6 @@ import {
   renderContentState,
 } from './main.js';
 
-const DEFAULT_SDK_URL = 'http://127.0.0.1:7777/sdk/singleton-iife.js';
-
 export async function bootstrapDemoPage({
   document = globalThis.document,
   history = globalThis.history,
@@ -41,7 +39,7 @@ export async function bootstrapDemoPage({
 
   if (setupState.configError) {
     disableFlowButtons(document);
-    runtime.handleConfigError(setupState.configError);
+    runtime.handleConfigError(setupState.configError, setupState.configStatus);
     return;
   }
 
@@ -72,7 +70,6 @@ function readLocationInputs({ document, location, windowObject }) {
     sdkOriginInput,
     sdkUrl:
       document?.querySelector?.('script[data-mini-auth-sdk]')?.src ||
-      windowObject?.__MINI_AUTH_SDK_URL__ ||
-      DEFAULT_SDK_URL,
+      windowObject?.__MINI_AUTH_SDK_URL__,
   };
 }

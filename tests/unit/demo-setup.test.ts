@@ -16,6 +16,7 @@ const getDemoSetupState = getDemoSetupStateUntyped as (locationLike: {
   sdkScriptUrl: string;
   issuer: string;
   jwksUrl: string;
+  configStatus: string;
   configError: string;
   webauthnReady: boolean;
   corsWarning: string;
@@ -211,7 +212,8 @@ describe('demo WebAuthn setup guidance', () => {
       }),
     ).toEqual(
       expect.objectContaining({
-        configError: expect.stringContaining('sdk-origin must be an origin'),
+        configStatus: 'waiting',
+        configError: expect.stringContaining('Add ?sdk-origin='),
         suggestedRpId: '',
         startupCommand: '',
       }),
@@ -240,7 +242,8 @@ describe('demo WebAuthn setup guidance', () => {
         webauthnReady: false,
         suggestedOrigin: 'http://127.0.0.1:8080',
         suggestedRpId: '',
-        configError: expect.stringContaining('sdk-origin must be an origin'),
+        configStatus: 'waiting',
+        configError: expect.stringContaining('Add ?sdk-origin='),
         corsWarning:
           'Start mini-auth with --origin set to this page origin so the browser can call the auth server cross-origin.',
         passkeyWarning: '',
@@ -278,7 +281,8 @@ describe('demo WebAuthn setup guidance', () => {
         webauthnReady: false,
         suggestedOrigin: 'https://127.0.0.1:8443',
         suggestedRpId: '',
-        configError: expect.stringContaining('sdk-origin must be an origin'),
+        configStatus: 'waiting',
+        configError: expect.stringContaining('Add ?sdk-origin='),
         passkeyWarning: '',
       }),
     );
@@ -296,7 +300,8 @@ describe('demo WebAuthn setup guidance', () => {
         webauthnReady: false,
         suggestedOrigin: 'https://[::1]:8443',
         suggestedRpId: '',
-        configError: expect.stringContaining('sdk-origin must be an origin'),
+        configStatus: 'waiting',
+        configError: expect.stringContaining('Add ?sdk-origin='),
         passkeyWarning: '',
       }),
     );

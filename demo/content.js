@@ -9,9 +9,15 @@ export function buildDemoContent(setupState) {
     sdkScriptUrl,
     startupCommand,
   } = setupState;
+  const placeholderOrigin = 'https://your-auth-origin';
+  const resolvedSdkOrigin = sdkOrigin || placeholderOrigin;
+  const resolvedIssuer = issuer || placeholderOrigin;
+  const resolvedJwksUrl = jwksUrl || `${placeholderOrigin}/jwks`;
 
   return {
-    sdkScriptTag: `<script src="${sdkScriptUrl}"></script>`,
+    sdkScriptTag: sdkScriptUrl
+      ? `<script src="${sdkScriptUrl}"></script>`
+      : '<!-- Add ?sdk-origin=https://your-auth-origin to render the exact SDK script tag. -->',
     startupCommand,
     hero: {
       title: 'mini-auth',
@@ -37,14 +43,14 @@ export function buildDemoContent(setupState) {
     joseSnippet: [
       "import { createRemoteJWKSet, jwtVerify } from 'jose';",
       '',
-      `const issuer = '${issuer}';`,
+      `const issuer = '${resolvedIssuer}';`,
       "const jwks = createRemoteJWKSet(new URL('/jwks', issuer));",
       '// Validate aud when your backend defines an audience boundary.',
       'await jwtVerify(token, jwks, { issuer });',
     ].join('\n'),
     apiReference: [
       makeApiEntry({
-        sdkOrigin,
+        sdkOrigin: resolvedSdkOrigin,
         method: 'POST',
         path: '/email/start',
         when: 'Start email sign-in with an email OTP.',
@@ -52,7 +58,7 @@ export function buildDemoContent(setupState) {
         response: '{ "ok": true }',
       }),
       makeApiEntry({
-        sdkOrigin,
+        sdkOrigin: resolvedSdkOrigin,
         method: 'POST',
         path: '/email/verify',
         when: 'Exchange the email OTP for a signed-in session.',
@@ -61,7 +67,7 @@ export function buildDemoContent(setupState) {
           '{ "access_token": "<jwt>", "token_type": "Bearer", "expires_in": 3600, "refresh_token": "<refresh-token>" }',
       }),
       makeApiEntry({
-        sdkOrigin,
+        sdkOrigin: resolvedSdkOrigin,
         method: 'POST',
         path: '/session/refresh',
         when: 'Rotate a refresh token into a fresh access token.',
@@ -70,7 +76,7 @@ export function buildDemoContent(setupState) {
           '{ "access_token": "<jwt>", "token_type": "Bearer", "expires_in": 3600, "refresh_token": "<refresh-token>" }',
       }),
       makeApiEntry({
-        sdkOrigin,
+        sdkOrigin: resolvedSdkOrigin,
         method: 'GET',
         path: '/me',
         when: 'Hydrate frontend user/session state after sign-in or refresh.',
@@ -79,7 +85,7 @@ export function buildDemoContent(setupState) {
           '{ "user_id": "user_123", "email": "user@example.com", "webauthn_credentials": [{ "credential_id": "cred_123", "public_key": "<base64url>", "counter": 1, "transports": "internal" }], "active_sessions": [{ "id": "sess_123", "created_at": "2026-04-04T00:00:00.000Z", "expires_at": "2026-04-05T00:00:00.000Z" }] }',
       }),
       makeApiEntry({
-        sdkOrigin,
+        sdkOrigin: resolvedSdkOrigin,
         method: 'POST',
         path: '/session/logout',
         when: 'Invalidate the active session and clear refresh credentials.',
@@ -87,7 +93,7 @@ export function buildDemoContent(setupState) {
         response: '{ "ok": true }',
       }),
       makeApiEntry({
-        sdkOrigin,
+        sdkOrigin: resolvedSdkOrigin,
         method: 'POST',
         path: '/webauthn/register/options',
         when: 'Request registration options before creating a passkey.',
@@ -96,7 +102,7 @@ export function buildDemoContent(setupState) {
           '{ "request_id": "request-register", "publicKey": { "challenge": "...", "rp": { "id": "auth.example.com", "name": "mini-auth" }, "user": { "id": "<base64url>", "name": "user@example.com", "displayName": "user@example.com" }, "pubKeyCredParams": [{ "type": "public-key", "alg": -7 }, { "type": "public-key", "alg": -257 }], "timeout": 300000, "authenticatorSelection": { "residentKey": "required", "userVerification": "preferred" } } }',
       }),
       makeApiEntry({
-        sdkOrigin,
+        sdkOrigin: resolvedSdkOrigin,
         method: 'POST',
         path: '/webauthn/register/verify',
         when: 'Verify the completed passkey registration ceremony.',
@@ -108,7 +114,7 @@ export function buildDemoContent(setupState) {
         response: '{ "ok": true, "user": { "email": "user@example.com" } }',
       }),
       makeApiEntry({
-        sdkOrigin,
+        sdkOrigin: resolvedSdkOrigin,
         method: 'POST',
         path: '/webauthn/authenticate/options',
         when: 'Request authentication options for username-less passkey sign-in.',
@@ -116,7 +122,7 @@ export function buildDemoContent(setupState) {
           '{ "request_id": "request-authenticate", "publicKey": { "challenge": "...", "rpId": "auth.example.com", "timeout": 300000, "userVerification": "preferred" } }',
       }),
       makeApiEntry({
-        sdkOrigin,
+        sdkOrigin: resolvedSdkOrigin,
         method: 'POST',
         path: '/webauthn/authenticate/verify',
         when: 'Verify the passkey assertion and create a session.',
@@ -128,7 +134,7 @@ export function buildDemoContent(setupState) {
           '{ "access_token": "<jwt>", "token_type": "Bearer", "expires_in": 3600, "refresh_token": "<refresh-token>" }',
       }),
       makeApiEntry({
-        sdkOrigin,
+        sdkOrigin: resolvedSdkOrigin,
         method: 'DELETE',
         path: '/webauthn/credentials/cred_123',
         when: 'Delete a saved passkey credential for the signed-in user.',
@@ -136,7 +142,7 @@ export function buildDemoContent(setupState) {
         response: '{ "ok": true }',
       }),
       makeApiEntry({
-        sdkOrigin,
+        sdkOrigin: resolvedSdkOrigin,
         method: 'GET',
         path: '/jwks',
         when: 'Publish the JWKS used to verify JWT signatures.',
@@ -144,16 +150,17 @@ export function buildDemoContent(setupState) {
       }),
     ],
     backendNotes: [
-      `Validate iss on every backend token check against ${issuer}.`,
+      `Validate iss on every backend token check against ${resolvedIssuer}.`,
       'Validate aud whenever your backend uses audience boundaries between services.',
       'Use GET /me for frontend user-state hydration, not as the backend per-request auth path.',
-      `Cache the remote JWKS from ${jwksUrl} and keep backend verifier config aligned with your issuer.`,
+      `Cache the remote JWKS from ${resolvedJwksUrl} and keep backend verifier config aligned with your issuer.`,
     ],
     backendNotesDisclosureLabel: 'More backend JWT notes',
     deploymentNotes: [
-      `Publish the static demo directory to GitHub Pages or any other static host, then start mini-auth with --origin ${currentOrigin}.`,
-      'If you attach a custom domain, keep the published Pages CNAME aligned with that domain so the browser origin stays stable for WebAuthn and CORS.',
-      'After moving the page to a new URL, update mini-auth --origin to the new page origin; when docs and auth live on different origins, keep using ?sdk-origin=https://your-auth-origin.',
+      'For GitHub Pages, publish the contents of demo/ so index.html stays at the final page URL and its relative ./style.css + ./main.js assets keep working on project subpaths.',
+      `After publish, start mini-auth with --origin ${currentOrigin} (or whatever final page origin you actually deployed) because --origin must match the browser page origin, not the auth server origin.`,
+      'If docs and auth live on different origins, keep the page URL on the docs host and append ?sdk-origin=https://your-auth-origin so the browser loads the SDK from the auth host.',
+      'If you use a custom GitHub Pages domain, publish a matching CNAME file and keep that domain stable; change mini-auth --origin whenever the docs URL path/domain changes enough to alter window.location.origin.',
     ],
     knownIssues: [
       'Passkeys depend on a valid RP ID and a browser environment that supports WebAuthn.',
