@@ -117,6 +117,9 @@ describe('demo content builders', () => {
       'request_id',
     );
     expect(byPath.get('/webauthn/register/verify')?.request).toContain(
+      'authorization',
+    );
+    expect(byPath.get('/webauthn/register/verify')?.request).toContain(
       'credential',
     );
     expect(byPath.get('/webauthn/authenticate/options')?.response).toContain(

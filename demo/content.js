@@ -100,6 +100,7 @@ export function buildDemoContent(setupState) {
         method: 'POST',
         path: '/webauthn/register/verify',
         when: 'Verify the completed passkey registration ceremony.',
+        headers: { authorization: 'Bearer <access_token>' },
         body: {
           request_id: 'request-register',
           credential: '<PublicKeyCredential>',
