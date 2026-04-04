@@ -2,6 +2,8 @@
 
 ## Progress
 
+- 2026-04-04: 用户批准 `docs/superpowers/specs/2026-04-04-single-page-demo-docs-design.md` 与 `docs/superpowers/plans/2026-04-04-single-page-demo-docs.md`，要求直接执行，不使用 worktree，采用 LegionMind multi-agent，边做边提交，全部完成后再 push。
+- 2026-04-04: 主上下文仅做 orchestration / review / `.legion` 写回；实现、测试、提交按 plan task 顺序交给 fresh subagent 执行。
 - 2026-04-04: 已完成本轮 brainstorming、中文 spec、implementation plan，并得到用户批准开始执行。
 - 2026-04-04: 用户要求使用 legionmind multi-agent 执行，不使用 worktree，边做边提交，完成后 push。
 - 2026-04-04: 当前仓库有未跟踪设计/计划文档：`docs/superpowers/specs/2026-04-03-auth-server-cors-sdk-demo-design.md` 与 `docs/superpowers/plans/2026-04-03-auth-server-cors-sdk-demo.md`，需要纳入执行过程。
@@ -18,8 +20,9 @@
 - 继续使用 `.legion/` 作为主控上下文，subagent 不直接写回 `.legion` 三文件。
 - 不使用 worktree；所有实现在当前工作区进行。
 - 浏览器拓扑保持 `script-origin == api-origin`，CORS allowlist 与 WebAuthn origin 校验统一复用 `--origin`。
+- 单页 demo/docs 执行遵循 `docs/superpowers/plans/2026-04-04-single-page-demo-docs.md`，按 Task 0-6 顺序推进，每个 task 完成后做 review 再进入下一项。
 
 ## Next
 
-- 提交 Task 4 的 README / demo 收尾切片。
-- 然后 push 当前分支到远端。
+- 先提交本轮 single-page demo/docs 的 spec / plan 文档。
+- 然后依次执行 Task 1-6，并在全部验证完成后 push 当前分支。

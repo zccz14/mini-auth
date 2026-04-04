@@ -1,26 +1,27 @@
-# Auth Server CORS（SDK / Demo）执行契约
+# mini-auth 单页 Demo / Docs 执行契约
 
 ## 任务
 
-- 按 `docs/superpowers/specs/2026-04-03-auth-server-cors-sdk-demo-design.md` 与 `docs/superpowers/plans/2026-04-03-auth-server-cors-sdk-demo.md` 实现 Auth Server 的 CORS 扩展，覆盖 SDK 与 Demo。
+- 按 `docs/superpowers/specs/2026-04-04-single-page-demo-docs-design.md` 与 `docs/superpowers/plans/2026-04-04-single-page-demo-docs.md` 实现 mini-auth 的单页 Demo / Docs 页面。
 
 ## 验收
 
-- Auth Server 的所有浏览器可见 API（含 `GET /sdk/singleton-iife.js`）对允许的 `Origin` 返回正确 CORS 头
-- `OPTIONS` preflight 在允许的 origin 下成功，在不允许的 origin 下不误放行
-- CORS 合同与 `--origin` 保持唯一且一致的来源
-- SDK 继续保持 `script-origin == api-origin` 与零配置 base URL 推导
-- Demo 不再依赖 proxy，可直接静态启动并根据 `window.location.origin` 推导 Auth Server `--origin`
-- README 完成 cross-origin 接入文档更新
-- 分段提交并最终 push
+- `demo/` 升级为单页长文站点，同时承担 landing page、交互 demo、接入说明、API Reference、Backend JWT Integration 与部署说明。
+- 页面继续从 `window.location.origin` 推导推荐的 `--origin`，并只接受 `?sdk-origin=` 作为外部配置参数。
+- 页面中的命令、snippet、JWT 示例、API 示例与 playground runtime 共享同一份派生状态。
+- Playground 继续支持 email start / verify、passkey register / authenticate、logout / session 可视化。
+- 页面支持 GitHub Pages 子路径等非根路径静态部署；本地资源引用不依赖站点根路径。
+- SDK 加载失败、CORS 配置错误、WebAuthn 环境不满足时，文档区仍可用且错误原因清晰可见。
+- README 补充对单页 demo/docs 与静态部署说明的入口。
+- 分段提交，并在全部验证完成后 push。
 
 ## 设计索引
 
-- Spec: `docs/superpowers/specs/2026-04-03-auth-server-cors-sdk-demo-design.md`
-- Plan: `docs/superpowers/plans/2026-04-03-auth-server-cors-sdk-demo.md`
+- Spec: `docs/superpowers/specs/2026-04-04-single-page-demo-docs-design.md`
+- Plan: `docs/superpowers/plans/2026-04-04-single-page-demo-docs.md`
 
 ## 阶段
 
-1. Server CORS：测试 / middleware / preflight / error-path
-2. SDK endpoint：契约与测试更新
-3. Demo / README / 最终验证 / push
+1. Setup / Content：统一配置派生、内容构建、文案合同与测试
+2. Page / Runtime：长页面结构、render / bootstrap、失败降级、URL 同步
+3. Docs / Verify：README、部署说明、完整验证、push
