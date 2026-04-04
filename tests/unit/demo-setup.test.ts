@@ -1,5 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import { getDemoSetupState } from '../../demo/setup.js';
+import { getDemoSetupState as getDemoSetupStateUntyped } from '../../demo/setup.js';
+
+const getDemoSetupState = getDemoSetupStateUntyped as (locationLike: {
+  origin: string;
+  protocol: string;
+  hostname: string;
+  sdkOriginInput?: string;
+  sdkUrl?: string;
+}) => {
+  currentOrigin: string;
+  currentRpId: string;
+  suggestedOrigin: string;
+  suggestedRpId: string;
+  sdkOrigin: string;
+  sdkScriptUrl: string;
+  issuer: string;
+  jwksUrl: string;
+  configError: string;
+  webauthnReady: boolean;
+  corsWarning: string;
+  passkeyWarning: string;
+  startupCommand: string;
+};
 
 describe('demo WebAuthn setup guidance', () => {
   it('derives page origin, sdk origin, issuer, jwks, and rp id from allowed inputs', () => {

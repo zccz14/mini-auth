@@ -47,6 +47,9 @@ export function renderApiReference(root, apiReference) {
     container,
     apiReference.map((entry) => {
       const article = createElementFor(root, 'article');
+      const cardHead = createElementFor(root, 'div');
+      const cardHeadBody = createElementFor(root, 'div');
+      const stepLabel = createElementFor(root, 'p');
       const title = createElementFor(root, 'h3');
       const when = createElementFor(root, 'p');
       const details = createElementFor(root, 'details');
@@ -54,14 +57,25 @@ export function renderApiReference(root, apiReference) {
       const request = createElementFor(root, 'pre');
       const response = createElementFor(root, 'pre');
 
+      article.className = 'panel inset-panel doc-code-card';
+      cardHead.className = 'card-head compact-head';
+      stepLabel.className = 'step-label';
+      when.className = 'card-copy';
+      details.className = 'doc-details';
+      request.className = 'doc-code';
+      response.className = 'doc-code';
+
+      stepLabel.textContent = entry.method;
       title.textContent = `${entry.method} ${entry.path}`;
       when.textContent = entry.when;
       summary.textContent = entry.detailsLabel;
       request.textContent = entry.request;
       response.textContent = entry.response;
 
+      appendChildren(cardHeadBody, [stepLabel, title]);
+      appendChildren(cardHead, [cardHeadBody]);
       appendChildren(details, [summary, request, response]);
-      appendChildren(article, [title, when, details]);
+      appendChildren(article, [cardHead, when, details]);
       return article;
     }),
   );
@@ -143,6 +157,9 @@ export function createDemoRuntime({
 
       if (elements.baseUrl) {
         elements.baseUrl.value = setupState.sdkScriptUrl || DEFAULT_SDK_URL;
+      }
+      if (elements.sdkOriginInput) {
+        elements.sdkOriginInput.value = setupState.sdkOrigin || '';
       }
 
       if (elements.email) {

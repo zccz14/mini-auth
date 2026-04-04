@@ -1,5 +1,27 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
+type FakeNode = FakeElement;
+
+type FakeElement = {
+  id: string;
+  tagName: string;
+  hidden: boolean;
+  textContent: string;
+  innerHTML: string;
+  className: string;
+  value: string;
+  children: FakeNode[];
+  append: (...nodes: FakeNode[]) => void;
+  appendChild: (node: FakeNode) => FakeNode;
+  replaceChildren: (...nodes: FakeNode[]) => void;
+};
+
+type FakeRenderRoot = {
+  createElement: (tagName: string) => FakeElement;
+  querySelector: (selector: string) => FakeElement | null;
+  querySelectorAll: (selector: string) => FakeElement[];
+};
+
 const sampleSetupState = {
   currentOrigin: 'https://docs.example.com',
   currentRpId: 'docs.example.com',
@@ -21,8 +43,8 @@ const sampleSetupState = {
 
 describe('demo render helpers', () => {
   beforeEach(() => {
-    delete globalThis.window;
-    delete globalThis.document;
+    Reflect.deleteProperty(globalThis, 'window');
+    Reflect.deleteProperty(globalThis, 'document');
   });
 
   it('renders config-dependent snippets into the page', async () => {
@@ -56,10 +78,20 @@ describe('demo render helpers', () => {
     expect(
       root.querySelector('#api-reference-list article h3')?.textContent,
     ).toContain('/email/start');
+    expect(root.querySelector('#api-reference-list article')?.className).toBe(
+      'panel inset-panel doc-code-card',
+    );
+    expect(
+      root.querySelector('#api-reference-list article p:last-of-type')
+        ?.className,
+    ).toBe('card-copy');
     expect(
       root.querySelector('#api-reference-list article details summary')
         ?.textContent,
     ).toContain('Show request and response');
+    expect(
+      root.querySelector('#api-reference-list article details')?.className,
+    ).toBe('doc-details');
     expect(
       root.querySelector('#api-reference-list article details pre')
         ?.textContent,
@@ -162,11 +194,33 @@ describe('demo render helpers', () => {
       'localhost or an HTTPS domain',
     );
   });
+
+  it('hydrates the visible sdk origin input from resolved setup state', async () => {
+    const { createDemoRuntime } = await import('../../demo/main.js');
+    const root = createRenderRoot();
+    const runtime = createDemoRuntime({
+      root,
+      setupState: sampleSetupState,
+      history: { replaceState() {} },
+      localStorage: createStorage(),
+      location: new URL('https://docs.example.com/demo/'),
+      windowObject: {
+        location: { reload() {} },
+        PublicKeyCredential: undefined,
+      },
+    });
+
+    runtime.hydrateState();
+
+    expect(root.querySelector('#sdk-origin-input')?.value).toBe(
+      'https://auth.example.com',
+    );
+  });
 });
 
-function createRenderRoot() {
-  const elements = new Map();
-  const makeElement = (id) => {
+function createRenderRoot(): FakeRenderRoot {
+  const elements = new Map<string, FakeElement>();
+  const makeElement = (id: string) => {
     const tagName =
       id.includes('list') || id === 'hero-capabilities' ? 'ul' : 'div';
     const element = createElement(tagName, id);
@@ -178,6 +232,15 @@ function createRenderRoot() {
   makeElement('hero-value-prop');
   makeElement('hero-audience');
   makeElement('hero-capabilities');
+  makeElement('sdk-origin-input');
+  makeElement('base-url');
+  makeElement('email');
+  makeElement('otp-code');
+  makeElement('access-token');
+  makeElement('refresh-token');
+  makeElement('request-id');
+  makeElement('latest-request');
+  makeElement('latest-response');
   makeElement('origin-command');
   makeElement('sdk-script-snippet');
   makeElement('jose-snippet');
@@ -199,16 +262,26 @@ function createRenderRoot() {
   makeElement('known-issues-list');
   makeElement('register-output');
   makeElement('authenticate-output');
+  makeElement('email-start-button');
+  makeElement('email-verify-button');
+  makeElement('register-button');
+  makeElement('authenticate-button');
+  makeElement('clear-state-button');
+  makeElement('status-config');
+  makeElement('status-email-start');
+  makeElement('status-email-verify');
+  makeElement('status-register');
+  makeElement('status-authenticate');
 
   return {
     createElement,
-    querySelector(selector) {
+    querySelector(selector: string) {
       if (elements.has(selector)) {
         return elements.get(selector) ?? null;
       }
 
       const parts = selector.split(' ');
-      const rootSelector = parts.shift();
+      const rootSelector = parts.shift() ?? '';
       const rootElement = elements.get(rootSelector);
       if (!rootElement) {
         return null;
@@ -216,9 +289,9 @@ function createRenderRoot() {
 
       return queryWithin(rootElement, parts);
     },
-    querySelectorAll(selector) {
+    querySelectorAll(selector: string) {
       const parts = selector.split(' ');
-      const rootSelector = parts.shift();
+      const rootSelector = parts.shift() ?? '';
       const rootElement = elements.get(rootSelector);
       if (!rootElement) {
         return [];
@@ -228,42 +301,50 @@ function createRenderRoot() {
     },
   };
 
-  function createElement(tagName, id = '') {
+  function createElement(tagName: string, id = ''): FakeElement {
     return {
       id,
       tagName: tagName.toUpperCase(),
       hidden: false,
       textContent: '',
       innerHTML: '',
+      className: '',
+      value: '',
       children: [],
-      append(...nodes) {
+      append(...nodes: FakeNode[]) {
         this.children.push(...nodes);
         syncText(this);
       },
-      appendChild(node) {
+      appendChild(node: FakeNode) {
         this.children.push(node);
         syncText(this);
         return node;
       },
-      replaceChildren(...nodes) {
+      replaceChildren(...nodes: FakeNode[]) {
         this.children = [...nodes];
         syncText(this);
       },
     };
   }
 
-  function queryWithin(element, selectors) {
+  function queryWithin(
+    element: FakeElement,
+    selectors: string[],
+  ): FakeElement | null {
     return queryAllWithin(element, selectors)[0] ?? null;
   }
 
-  function queryAllWithin(element, selectors) {
+  function queryAllWithin(
+    element: FakeElement,
+    selectors: string[],
+  ): FakeElement[] {
     if (selectors.length === 0) {
       return [element];
     }
 
     const [selector, ...rest] = selectors;
     const matcher = selector.replace(':last-of-type', '');
-    const matches = [];
+    const matches: FakeElement[] = [];
     walk(element, (child) => {
       if (child.tagName?.toLowerCase() === matcher) {
         matches.push(child);
@@ -279,14 +360,14 @@ function createRenderRoot() {
       : filtered.flatMap((child) => queryAllWithin(child, rest));
   }
 
-  function walk(element, visit) {
+  function walk(element: FakeElement, visit: (element: FakeElement) => void) {
     for (const child of element.children) {
       visit(child);
       walk(child, visit);
     }
   }
 
-  function syncText(element) {
+  function syncText(element: FakeElement) {
     element.textContent = [
       element.innerHTML,
       ...element.children.map((child) => child.textContent),
@@ -294,4 +375,16 @@ function createRenderRoot() {
       .filter(Boolean)
       .join('\n');
   }
+}
+
+function createStorage() {
+  const values = new Map<string, string>();
+  return {
+    getItem(key: string) {
+      return values.get(key) ?? null;
+    },
+    setItem(key: string, value: string) {
+      values.set(key, value);
+    },
+  };
 }

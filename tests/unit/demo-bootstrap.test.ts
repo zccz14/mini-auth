@@ -1,5 +1,111 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+type FakeEvent = {
+  type: string;
+  preventDefault?: () => void;
+};
+
+type FakeListener = (event: FakeEvent) => void | Promise<void>;
+
+type FakeElement = {
+  tagName: string;
+  id: string;
+  value: string;
+  textContent: string;
+  innerHTML: string;
+  hidden: boolean;
+  disabled: boolean;
+  className: string;
+  dataset: Record<string, string>;
+  children: FakeElement[];
+  classList: {
+    add: (...names: string[]) => void;
+    remove: (...names: string[]) => void;
+  };
+  append: (...nodes: FakeElement[]) => void;
+  appendChild: (node: FakeElement) => FakeElement;
+  replaceChildren: (...nodes: FakeElement[]) => void;
+  addEventListener: (type: string, listener: FakeListener) => void;
+  dispatchEvent: (event: FakeEvent) => Promise<void>;
+  click: () => Promise<void>;
+  hasAttribute: (name: string) => boolean;
+  src?: string;
+};
+
+type FakeStorage = {
+  getItem: (key: string) => string | null;
+  setItem: (key: string, value: string) => void;
+  removeItem: (key: string) => void;
+};
+
+type FakeLocation = URL & { reload: ReturnType<typeof vi.fn> };
+
+type FakeHistory = {
+  replaceState: (_state: unknown, _title: string, nextUrl: string) => void;
+};
+
+type FakeSdk = {
+  ready: Promise<void>;
+  email: {
+    start: (input?: unknown) => Promise<unknown>;
+    verify: (input?: unknown) => Promise<unknown>;
+  };
+  webauthn: {
+    register: () => Promise<unknown>;
+    authenticate: () => Promise<unknown>;
+  };
+  me: {
+    get: () => unknown;
+    reload: () => Promise<unknown>;
+  };
+  session: {
+    getState: () => typeof sampleSdkState;
+    onChange: (listener: () => void) => void;
+    logout: () => Promise<void>;
+  };
+};
+
+type FakeWindow = {
+  MiniAuth?: FakeSdk;
+  __MINI_AUTH_TEST_HOOKS__?: {
+    loadSdkScript?: () => Promise<void>;
+  };
+  __MINI_AUTH_SDK_URL__?: string;
+  PublicKeyCredential?: unknown;
+  location: FakeLocation;
+  history: FakeHistory;
+  localStorage: FakeStorage;
+};
+
+type FakeDocument = {
+  body: FakeElement;
+  defaultView: FakeWindow | null;
+  createElement: (tagName: string) => FakeElement;
+  querySelector: (selector: string) => FakeElement | null;
+  querySelectorAll: (selector: string) => FakeElement[];
+};
+
+type TestEnvironment = {
+  document: FakeDocument;
+  history: FakeHistory;
+  localStorage: FakeStorage;
+  location: FakeLocation;
+  window: FakeWindow;
+};
+
+type TestGlobals = typeof globalThis & {
+  document?: FakeDocument;
+  window?: FakeWindow;
+  history?: FakeHistory;
+  localStorage?: FakeStorage;
+  location?: FakeLocation;
+  Event?: unknown;
+  __MINI_AUTH_TEST_HOOKS__?: FakeWindow['__MINI_AUTH_TEST_HOOKS__'];
+  MiniAuth?: FakeSdk;
+};
+
+const testGlobals = globalThis as TestGlobals;
+
 const sampleSdkState = {
   accessToken: 'access-token',
   refreshToken: 'refresh-token',
@@ -7,20 +113,20 @@ const sampleSdkState = {
 };
 
 describe('demo bootstrap', () => {
-  let previousDocument;
-  let previousWindow;
-  let previousHistory;
-  let previousLocalStorage;
-  let previousLocation;
-  let previousEvent;
+  let previousDocument: TestGlobals['document'];
+  let previousWindow: TestGlobals['window'];
+  let previousHistory: TestGlobals['history'];
+  let previousLocalStorage: TestGlobals['localStorage'];
+  let previousLocation: TestGlobals['location'];
+  let previousEvent: TestGlobals['Event'];
 
   beforeEach(() => {
-    previousDocument = globalThis.document;
-    previousWindow = globalThis.window;
-    previousHistory = globalThis.history;
-    previousLocalStorage = globalThis.localStorage;
-    previousLocation = globalThis.location;
-    previousEvent = globalThis.Event;
+    previousDocument = testGlobals.document;
+    previousWindow = testGlobals.window;
+    previousHistory = testGlobals.history;
+    previousLocalStorage = testGlobals.localStorage;
+    previousLocation = testGlobals.location;
+    previousEvent = testGlobals.Event;
   });
 
   afterEach(() => {
@@ -30,8 +136,8 @@ describe('demo bootstrap', () => {
     restoreGlobal('localStorage', previousLocalStorage);
     restoreGlobal('location', previousLocation);
     restoreGlobal('Event', previousEvent);
-    delete globalThis.__MINI_AUTH_TEST_HOOKS__;
-    delete globalThis.MiniAuth;
+    Reflect.deleteProperty(testGlobals, '__MINI_AUTH_TEST_HOOKS__');
+    Reflect.deleteProperty(testGlobals, 'MiniAuth');
   });
 
   it('boots the page from window.location and renders docs even when sdk loading fails', async () => {
@@ -40,12 +146,7 @@ describe('demo bootstrap', () => {
     );
     const { bootstrapDemoPage } = await import('../../demo/bootstrap.js');
 
-    await bootstrapDemoPage({
-      document: env.document,
-      history: env.history,
-      localStorage: env.localStorage,
-      location: env.location,
-      window: env.window,
+    await runBootstrap(bootstrapDemoPage, env, {
       loadSdkScript: async () => {
         throw new Error('network down');
       },
@@ -76,13 +177,7 @@ describe('demo bootstrap', () => {
     );
     const { bootstrapDemoPage } = await import('../../demo/bootstrap.js');
 
-    await bootstrapDemoPage({
-      document: env.document,
-      history: env.history,
-      localStorage: env.localStorage,
-      location: env.location,
-      window: env.window,
-    });
+    await runBootstrap(bootstrapDemoPage, env);
 
     expect(
       env.document.querySelector('#api-reference-list')?.textContent,
@@ -105,12 +200,7 @@ describe('demo bootstrap', () => {
     );
     const { bootstrapDemoPage } = await import('../../demo/bootstrap.js');
 
-    const startup = bootstrapDemoPage({
-      document: env.document,
-      history: env.history,
-      localStorage: env.localStorage,
-      location: env.location,
-      window: env.window,
+    const startup = runBootstrap(bootstrapDemoPage, env, {
       loadSdkScript: () => new Promise(() => {}),
     });
 
@@ -133,22 +223,23 @@ describe('demo bootstrap', () => {
   it('uses the injected window for fallback sdk url reads', async () => {
     const env = createTestEnvironment('https://docs.example.com/demo/');
     const { bootstrapDemoPage } = await import('../../demo/bootstrap.js');
-    globalThis.window = {
-      location: new URL('https://global.example.com/demo/'),
+    setTestGlobal('window', {
+      location: Object.assign(new URL('https://global.example.com/demo/'), {
+        reload: vi.fn(),
+      }),
       __MINI_AUTH_SDK_URL__: 'https://global.example.com/sdk/singleton-iife.js',
-    };
+      history: env.history,
+      localStorage: env.localStorage,
+    } as FakeWindow);
 
     env.window.__MINI_AUTH_SDK_URL__ =
       'https://injected-window.example.com/sdk/singleton-iife.js';
 
-    await bootstrapDemoPage({
-      document: env.document,
-      history: env.history,
-      localStorage: env.localStorage,
-      window: env.window,
+    await runBootstrap(bootstrapDemoPage, env, {
       loadSdkScript: async () => {
         throw new Error('network down');
       },
+      location: undefined,
     });
 
     expect(
@@ -167,12 +258,7 @@ describe('demo bootstrap', () => {
     const ready = createDeferred();
     env.window.MiniAuth = createFakeSdk({ ready: ready.promise });
 
-    const startup = bootstrapDemoPage({
-      document: env.document,
-      history: env.history,
-      localStorage: env.localStorage,
-      location: env.location,
-      window: env.window,
+    const startup = runBootstrap(bootstrapDemoPage, env, {
       loadSdkScript: async () => {},
     });
 
@@ -186,7 +272,7 @@ describe('demo bootstrap', () => {
       env.document.querySelector('#latest-response')?.textContent,
     ).toContain('not ready yet');
 
-    ready.resolve();
+    ready.resolve?.();
     await startup;
 
     expect(env.document.querySelector('#email-start-button')?.disabled).toBe(
@@ -204,12 +290,7 @@ describe('demo bootstrap', () => {
     const { bootstrapDemoPage } = await import('../../demo/bootstrap.js');
     env.window.MiniAuth = createFakeSdk();
 
-    await bootstrapDemoPage({
-      document: env.document,
-      history: env.history,
-      localStorage: env.localStorage,
-      location: env.location,
-      window: env.window,
+    await runBootstrap(bootstrapDemoPage, env, {
       loadSdkScript: async () => {},
     });
 
@@ -235,12 +316,7 @@ describe('demo bootstrap', () => {
       },
     });
 
-    await bootstrapDemoPage({
-      document: env.document,
-      history: env.history,
-      localStorage: env.localStorage,
-      location: env.location,
-      window: env.window,
+    await runBootstrap(bootstrapDemoPage, env, {
       loadSdkScript: async () => {},
     });
 
@@ -263,12 +339,7 @@ describe('demo bootstrap', () => {
     const { bootstrapDemoPage } = await import('../../demo/bootstrap.js');
     env.window.MiniAuth = createFakeSdk();
 
-    await bootstrapDemoPage({
-      document: env.document,
-      history: env.history,
-      localStorage: env.localStorage,
-      location: env.location,
-      window: env.window,
+    await runBootstrap(bootstrapDemoPage, env, {
       loadSdkScript: async () => {},
     });
 
@@ -292,7 +363,7 @@ describe('demo bootstrap', () => {
     };
 
     vi.resetModules();
-    await import('../../demo/main.js?bootstrap-import');
+    await import('../../demo/main.js');
 
     expect(
       env.document.querySelector('#origin-command')?.textContent,
@@ -312,12 +383,7 @@ describe('demo bootstrap', () => {
     const { bootstrapDemoPage } = await import('../../demo/bootstrap.js');
     env.window.MiniAuth = createFakeSdk();
 
-    await bootstrapDemoPage({
-      document: env.document,
-      history: env.history,
-      localStorage: env.localStorage,
-      location: env.location,
-      window: env.window,
+    await runBootstrap(bootstrapDemoPage, env, {
       loadSdkScript: async () => {},
     });
 
@@ -337,23 +403,42 @@ describe('demo bootstrap', () => {
   });
 });
 
-function createTestEnvironment(urlString, options = {}) {
-  const location = new URL(urlString);
-  location.reload = vi.fn();
+function runBootstrap(
+  bootstrapDemoPage: unknown,
+  env: TestEnvironment,
+  overrides: Partial<{
+    location: FakeLocation | undefined;
+    loadSdkScript: () => Promise<void>;
+  }> = {},
+) {
+  return (
+    bootstrapDemoPage as (options: Record<string, unknown>) => Promise<void>
+  )({
+    document: env.document,
+    history: env.history,
+    localStorage: env.localStorage,
+    location: overrides.location ?? env.location,
+    window: env.window,
+    ...overrides,
+  });
+}
+
+function createTestEnvironment(
+  urlString: string,
+  options: { autoFailScript?: boolean; publicKeyCredential?: unknown } = {},
+): TestEnvironment {
+  const location = Object.assign(new URL(urlString), { reload: vi.fn() });
   const localStorage = createStorage();
   const document = createFakeDocument(options);
-  const history = {
-    replaceState(_state, _title, nextUrl) {
+  const history: FakeHistory = {
+    replaceState(_state: unknown, _title: string, nextUrl: string) {
       const next = new URL(nextUrl, location.origin);
       location.pathname = next.pathname;
       location.search = next.search;
       location.hash = next.hash;
     },
   };
-  const window = {
-    MiniAuth: undefined,
-    __MINI_AUTH_TEST_HOOKS__: undefined,
-    __MINI_AUTH_SDK_URL__: undefined,
+  const window: FakeWindow = {
     PublicKeyCredential:
       'publicKeyCredential' in options
         ? options.publicKeyCredential
@@ -374,47 +459,69 @@ function createTestEnvironment(urlString, options = {}) {
   };
 }
 
-function applyGlobals(env) {
-  globalThis.Event = class Event {
-    constructor(type) {
-      this.type = type;
-    }
-  };
-  globalThis.document = env.document;
-  globalThis.window = env.window;
-  globalThis.history = env.history;
-  globalThis.localStorage = env.localStorage;
-  globalThis.location = env.location;
-  globalThis.__MINI_AUTH_TEST_HOOKS__ = env.window.__MINI_AUTH_TEST_HOOKS__;
+function applyGlobals(env: TestEnvironment) {
+  setTestGlobal(
+    'Event',
+    class FakeEventClass {
+      type: string;
+
+      constructor(type: string) {
+        this.type = type;
+      }
+    },
+  );
+  setTestGlobal('document', env.document);
+  setTestGlobal('window', env.window);
+  setTestGlobal('history', env.history);
+  setTestGlobal('localStorage', env.localStorage);
+  setTestGlobal('location', env.location);
+  setTestGlobal(
+    '__MINI_AUTH_TEST_HOOKS__',
+    env.window.__MINI_AUTH_TEST_HOOKS__,
+  );
 }
 
-function restoreGlobal(name, value) {
+function restoreGlobal(
+  name: keyof TestGlobals,
+  value: TestGlobals[keyof TestGlobals],
+) {
   if (value === undefined) {
-    delete globalThis[name];
+    Reflect.deleteProperty(testGlobals, name);
     return;
   }
 
-  globalThis[name] = value;
+  setTestGlobal(name, value);
 }
 
-function createStorage() {
-  const values = new Map();
+function setTestGlobal<K extends keyof TestGlobals>(
+  name: K,
+  value: TestGlobals[K],
+) {
+  Object.defineProperty(testGlobals, name, {
+    value,
+    configurable: true,
+    writable: true,
+  });
+}
+
+function createStorage(): FakeStorage {
+  const values = new Map<string, string>();
   return {
-    getItem(key) {
-      return values.has(key) ? values.get(key) : null;
+    getItem(key: string) {
+      return values.get(key) ?? null;
     },
-    setItem(key, value) {
+    setItem(key: string, value: string) {
       values.set(key, String(value));
     },
-    removeItem(key) {
+    removeItem(key: string) {
       values.delete(key);
     },
   };
 }
 
 function createDeferred() {
-  let resolve;
-  const promise = new Promise((nextResolve) => {
+  let resolve: (() => void) | undefined;
+  const promise = new Promise<void>((nextResolve) => {
     resolve = nextResolve;
   });
 
@@ -424,9 +531,17 @@ function createDeferred() {
   };
 }
 
-function createFakeSdk(overrides = {}) {
+function createFakeSdk(
+  overrides: Partial<{
+    ready: Promise<void>;
+    email: Partial<FakeSdk['email']>;
+    webauthn: Partial<FakeSdk['webauthn']>;
+    me: Partial<FakeSdk['me']>;
+    session: Partial<FakeSdk['session']>;
+  }> = {},
+): FakeSdk {
   const sessionState = { ...sampleSdkState };
-  const listeners = [];
+  const listeners: Array<() => void> = [];
 
   const sdk = {
     ready: Promise.resolve(),
@@ -447,7 +562,7 @@ function createFakeSdk(overrides = {}) {
     },
     session: {
       getState: () => sessionState,
-      onChange: (listener) => listeners.push(listener),
+      onChange: (listener: () => void) => listeners.push(listener),
       logout: async () => {
         sessionState.status = 'anonymous';
       },
@@ -455,13 +570,16 @@ function createFakeSdk(overrides = {}) {
     },
   };
 
-  return { ...sdk, ...overrides };
+  return { ...sdk, ...overrides } as FakeSdk;
 }
 
-function createFakeDocument(options) {
-  const elements = new Map();
+function createFakeDocument(options: {
+  autoFailScript?: boolean;
+  publicKeyCredential?: unknown;
+}): FakeDocument {
+  const elements = new Map<string, FakeElement>();
   const body = createElement('body');
-  body.append = (...nodes) => {
+  body.append = (...nodes: FakeElement[]) => {
     body.children.push(...nodes);
     for (const node of nodes) {
       if (options.autoFailScript && node.tagName === 'SCRIPT') {
@@ -469,7 +587,7 @@ function createFakeDocument(options) {
       }
     }
   };
-  body.appendChild = (node) => {
+  body.appendChild = (node: FakeElement) => {
     body.append(node);
     return node;
   };
@@ -478,7 +596,7 @@ function createFakeDocument(options) {
     body,
     defaultView: null,
     createElement,
-    querySelector(selector) {
+    querySelector(selector: string) {
       if (selector === 'script[data-mini-auth-sdk]') {
         return (
           body.children.find((node) => node.dataset.miniAuthSdk === 'true') ??
@@ -491,7 +609,7 @@ function createFakeDocument(options) {
 
       return queryNested(selector);
     },
-    querySelectorAll(selector) {
+    querySelectorAll(selector: string) {
       return queryNestedAll(selector);
     },
   };
@@ -557,13 +675,14 @@ function createFakeDocument(options) {
   }
 
   const backendNotesSummary = createElement('summary');
-  elements.get('#backend-notes-disclosure').appendChild(backendNotesSummary);
+  elements.get('#backend-notes-disclosure')?.appendChild(backendNotesSummary);
 
   return document;
 
-  function createElement(tagName) {
-    const listeners = new Map();
-    return {
+  function createElement(tagName: string): FakeElement {
+    const listeners = new Map<string, FakeListener[]>();
+    const classNames = new Set<string>();
+    const element: FakeElement = {
       tagName: String(tagName).toUpperCase(),
       id: '',
       value: '',
@@ -571,31 +690,42 @@ function createFakeDocument(options) {
       innerHTML: '',
       hidden: false,
       disabled: false,
+      className: '',
       dataset: {},
       children: [],
       classList: {
-        add() {},
-        remove() {},
+        add(...names: string[]) {
+          for (const name of names) {
+            classNames.add(name);
+          }
+          element.className = [...classNames].join(' ');
+        },
+        remove(...names: string[]) {
+          for (const name of names) {
+            classNames.delete(name);
+          }
+          element.className = [...classNames].join(' ');
+        },
       },
-      append(...nodes) {
+      append(...nodes: FakeElement[]) {
         this.children.push(...nodes);
         syncText(this);
       },
-      appendChild(node) {
+      appendChild(node: FakeElement) {
         this.children.push(node);
         syncText(this);
         return node;
       },
-      replaceChildren(...nodes) {
+      replaceChildren(...nodes: FakeElement[]) {
         this.children = [...nodes];
         syncText(this);
       },
-      addEventListener(type, listener) {
+      addEventListener(type: string, listener: FakeListener) {
         const bucket = listeners.get(type) ?? [];
         bucket.push(listener);
         listeners.set(type, bucket);
       },
-      async dispatchEvent(event) {
+      async dispatchEvent(event: FakeEvent) {
         const bucket = listeners.get(event.type) ?? [];
         for (const listener of bucket) {
           await listener.call(this, event);
@@ -607,19 +737,21 @@ function createFakeDocument(options) {
           preventDefault() {},
         });
       },
-      hasAttribute(name) {
-        return Boolean(this[name]);
+      hasAttribute(name: string) {
+        return Boolean(this[name as keyof FakeElement]);
       },
     };
+
+    return element;
   }
 
-  function queryNested(selector) {
+  function queryNested(selector: string) {
     return queryNestedAll(selector)[0] ?? null;
   }
 
-  function queryNestedAll(selector) {
+  function queryNestedAll(selector: string): FakeElement[] {
     const parts = selector.split(' ');
-    const rootSelector = parts.shift();
+    const rootSelector = parts.shift() ?? '';
     const rootElement = elements.get(rootSelector);
     if (!rootElement) {
       return [];
@@ -628,14 +760,17 @@ function createFakeDocument(options) {
     return queryAllWithin(rootElement, parts);
   }
 
-  function queryAllWithin(element, selectors) {
+  function queryAllWithin(
+    element: FakeElement,
+    selectors: string[],
+  ): FakeElement[] {
     if (selectors.length === 0) {
       return [element];
     }
 
     const [selector, ...rest] = selectors;
     const matcher = selector.replace(':last-of-type', '');
-    const matches = [];
+    const matches: FakeElement[] = [];
     walk(element, (child) => {
       if (child.tagName?.toLowerCase() === matcher) {
         matches.push(child);
@@ -651,14 +786,14 @@ function createFakeDocument(options) {
       : filtered.flatMap((child) => queryAllWithin(child, rest));
   }
 
-  function walk(element, visit) {
+  function walk(element: FakeElement, visit: (child: FakeElement) => void) {
     for (const child of element.children) {
       visit(child);
       walk(child, visit);
     }
   }
 
-  function syncText(element) {
+  function syncText(element: FakeElement) {
     element.textContent = [
       ...element.children.map((child) => child.textContent).filter(Boolean),
     ].join('\n');
