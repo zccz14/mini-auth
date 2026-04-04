@@ -86,6 +86,9 @@ describe('demo content builders', () => {
       content.apiReference.map((entry) => [entry.path, entry]),
     );
 
+    expect(byPath.get('/me')?.response).toContain('user_id');
+    expect(byPath.get('/me')?.response).toContain('webauthn_credentials');
+    expect(byPath.get('/me')?.response).toContain('active_sessions');
     expect(byPath.get('/email/verify')?.response).toContain('access_token');
     expect(byPath.get('/email/verify')?.response).toContain('refresh_token');
     expect(byPath.get('/session/refresh')?.request).toContain('refresh_token');
@@ -99,9 +102,39 @@ describe('demo content builders', () => {
     expect(byPath.get('/webauthn/register/options')?.request).not.toContain(
       'user@example.com',
     );
+    expect(byPath.get('/webauthn/register/options')?.response).toContain(
+      'request_id',
+    );
+    expect(byPath.get('/webauthn/register/options')?.response).toContain(
+      'publicKey',
+    );
+    expect(byPath.get('/webauthn/register/options')?.response).toContain(
+      'authenticatorSelection',
+    );
+    expect(byPath.get('/webauthn/register/verify')?.request).toContain(
+      'request_id',
+    );
+    expect(byPath.get('/webauthn/register/verify')?.request).toContain(
+      'credential',
+    );
+    expect(byPath.get('/webauthn/authenticate/options')?.response).toContain(
+      'request_id',
+    );
+    expect(byPath.get('/webauthn/authenticate/options')?.response).toContain(
+      'publicKey',
+    );
+    expect(byPath.get('/webauthn/authenticate/options')?.response).toContain(
+      'rpId',
+    );
     expect(
       byPath.get('/webauthn/authenticate/options')?.response,
     ).not.toContain('allowCredentials');
+    expect(byPath.get('/webauthn/authenticate/verify')?.request).toContain(
+      'request_id',
+    );
+    expect(byPath.get('/webauthn/authenticate/verify')?.request).toContain(
+      'credential',
+    );
   });
 
   it('describes multi-tab behavior as a bug, not a supported limit', () => {

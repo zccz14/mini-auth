@@ -75,7 +75,7 @@ export function buildDemoContent(setupState) {
         path: '/me',
         when: 'Hydrate frontend user/session state after sign-in or refresh.',
         response:
-          '{ "user": { "id": "user_123", "email": "user@example.com" } }',
+          '{ "user_id": "user_123", "email": "user@example.com", "webauthn_credentials": [{ "credential_id": "cred_123", "public_key": "<base64url>", "counter": 1, "transports": "internal" }], "active_sessions": [{ "id": "sess_123", "created_at": "2026-04-04T00:00:00.000Z", "expires_at": "2026-04-05T00:00:00.000Z" }] }',
       }),
       makeApiEntry({
         sdkOrigin,
@@ -91,14 +91,18 @@ export function buildDemoContent(setupState) {
         path: '/webauthn/register/options',
         when: 'Request registration options before creating a passkey.',
         headers: { authorization: 'Bearer <access_token>' },
-        response: '{ "challenge": "...", "rp": { "name": "mini-auth" } }',
+        response:
+          '{ "request_id": "request-register", "publicKey": { "challenge": "...", "rp": { "id": "auth.example.com", "name": "mini-auth" }, "user": { "id": "<base64url>", "name": "user@example.com", "displayName": "user@example.com" }, "pubKeyCredParams": [{ "type": "public-key", "alg": -7 }, { "type": "public-key", "alg": -257 }], "timeout": 300000, "authenticatorSelection": { "residentKey": "required", "userVerification": "preferred" } } }',
       }),
       makeApiEntry({
         sdkOrigin,
         method: 'POST',
         path: '/webauthn/register/verify',
         when: 'Verify the completed passkey registration ceremony.',
-        body: { credential: '<PublicKeyCredential>' },
+        body: {
+          request_id: 'request-register',
+          credential: '<PublicKeyCredential>',
+        },
         response: '{ "ok": true, "user": { "email": "user@example.com" } }',
       }),
       makeApiEntry({
@@ -107,14 +111,17 @@ export function buildDemoContent(setupState) {
         path: '/webauthn/authenticate/options',
         when: 'Request authentication options for username-less passkey sign-in.',
         response:
-          '{ "challenge": "...", "rpId": "auth.example.com", "userVerification": "preferred" }',
+          '{ "request_id": "request-authenticate", "publicKey": { "challenge": "...", "rpId": "auth.example.com", "timeout": 300000, "userVerification": "preferred" } }',
       }),
       makeApiEntry({
         sdkOrigin,
         method: 'POST',
         path: '/webauthn/authenticate/verify',
         when: 'Verify the passkey assertion and create a session.',
-        body: { credential: '<PublicKeyCredential>' },
+        body: {
+          request_id: 'request-authenticate',
+          credential: '<PublicKeyCredential>',
+        },
         response:
           '{ "access_token": "<jwt>", "token_type": "Bearer", "expires_in": 3600, "refresh_token": "<refresh-token>" }',
       }),
