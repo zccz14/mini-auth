@@ -56,6 +56,40 @@ describe('demo WebAuthn setup guidance', () => {
     );
   });
 
+  it('rejects sdk-origin values with credentials', () => {
+    expect(
+      getDemoSetupState({
+        origin: 'https://docs.example.com',
+        protocol: 'https:',
+        hostname: 'docs.example.com',
+        sdkOriginInput: 'https://user:secret@auth.example.com',
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        configError: expect.stringContaining('sdk-origin must be an origin'),
+        sdkOrigin: '',
+        startupCommand: '',
+      }),
+    );
+  });
+
+  it('rejects sdk-origin values with unsupported schemes', () => {
+    expect(
+      getDemoSetupState({
+        origin: 'https://docs.example.com',
+        protocol: 'https:',
+        hostname: 'docs.example.com',
+        sdkOriginInput: 'ftp://auth.example.com',
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        configError: expect.stringContaining('sdk-origin must be an origin'),
+        sdkOrigin: '',
+        startupCommand: '',
+      }),
+    );
+  });
+
   it('blocks runtime when sdk-origin is explicitly present but empty', () => {
     expect(
       getDemoSetupState({

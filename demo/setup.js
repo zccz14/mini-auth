@@ -91,6 +91,14 @@ function normalizeSdkOrigin(value) {
   try {
     const url = new URL(value);
 
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return { ok: false, error: 'sdk-origin must be an origin-only URL.' };
+    }
+
+    if (url.username || url.password) {
+      return { ok: false, error: 'sdk-origin must be an origin-only URL.' };
+    }
+
     if (url.pathname !== '/' || url.search || url.hash) {
       return { ok: false, error: 'sdk-origin must be an origin-only URL.' };
     }
