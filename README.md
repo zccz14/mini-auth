@@ -165,7 +165,7 @@ If a refresh token is already stored, startup enters `recovering` first and then
 
 - The SDK script origin must match the auth API origin because the singleton client derives its base URL from the script `src`.
 - Cross-origin browser pages are supported only when the page origin is included in `--origin`.
-- v1 is designed for single-tab reliability. Because refresh tokens rotate, multiple tabs sharing one session may race and invalidate one another.
+- Multiple tabs sharing one session can currently race during refresh-token rotation and invalidate one another. This is a known SDK bug, not a product contract.
 
 ## WebAuthn flow
 
