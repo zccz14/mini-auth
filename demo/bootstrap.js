@@ -14,8 +14,8 @@ export async function bootstrapDemoPage({
   document = globalThis.document,
   history = globalThis.history,
   localStorage = globalThis.localStorage,
-  location = globalThis.window?.location,
   window: windowObject = globalThis.window,
+  location = windowObject?.location,
   loadSdkScript = defaultLoadSdkScript,
 } = {}) {
   const setupState = getDemoSetupState(
@@ -56,7 +56,11 @@ export async function bootstrapDemoPage({
 }
 
 function readLocationInputs({ document, location, windowObject }) {
-  const url = location instanceof URL ? location : new URL(location.href);
+  const resolvedLocation = location || windowObject?.location;
+  const url =
+    resolvedLocation instanceof URL
+      ? resolvedLocation
+      : new URL(resolvedLocation.href);
   const sdkOriginInput = url.searchParams.has('sdk-origin')
     ? (url.searchParams.get('sdk-origin') ?? '')
     : undefined;

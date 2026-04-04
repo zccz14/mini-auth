@@ -131,6 +131,7 @@ export function createDemoRuntime({
     latestResult: DEFAULT_LATEST_RESULT,
   };
   let sdk = null;
+  let sdkInteractive = false;
 
   return {
     hydrateState() {
@@ -171,6 +172,7 @@ export function createDemoRuntime({
           elements,
           renderState,
           sdk,
+          sdkInteractive,
           sectionViews,
           state,
           localStorage,
@@ -181,22 +183,36 @@ export function createDemoRuntime({
           elements,
           renderState,
           sdk,
+          sdkInteractive,
           sectionViews,
           state,
           localStorage,
         }),
       );
       elements.registerButton?.addEventListener('click', () =>
-        handleRegisterPasskey({ renderState, sdk, sectionViews, state }),
+        handleRegisterPasskey({
+          renderState,
+          sdk,
+          sdkInteractive,
+          sectionViews,
+          state,
+        }),
       );
       elements.authenticateButton?.addEventListener('click', () =>
-        handleAuthenticatePasskey({ renderState, sdk, sectionViews, state }),
+        handleAuthenticatePasskey({
+          renderState,
+          sdk,
+          sdkInteractive,
+          sectionViews,
+          state,
+        }),
       );
       elements.clearStateButton?.addEventListener('click', () =>
         clearState({
           elements,
           renderState,
           sdk,
+          sdkInteractive,
           sectionViews,
           state,
           localStorage,
@@ -206,10 +222,7 @@ export function createDemoRuntime({
 
     attachSdk(nextSdk) {
       sdk = nextSdk || null;
-
-      if (sdk) {
-        enableFlowButtons(root);
-      }
+      sdkInteractive = false;
 
       if (sdk?.session?.onChange) {
         sdk.session.onChange(() => renderState());
@@ -226,11 +239,16 @@ export function createDemoRuntime({
 
       try {
         await sdk.ready;
+        sdkInteractive = true;
+        enableFlowButtons(root);
         renderState();
       } catch (error) {
         state.latestAction = 'SDK startup recovery';
         state.latestResult = formatError(error);
+        sdkInteractive = false;
+        disableFlowButtons(root);
         renderState();
+        return;
       }
 
       const passkeyBlockReason = getPasskeyBlockReason(
@@ -255,6 +273,7 @@ export function createDemoRuntime({
     },
 
     handleConfigError(message) {
+      sdkInteractive = false;
       state.latestAction = 'Runtime blocked';
       state.latestResult = message;
       if (elements.statusConfig) {
@@ -265,6 +284,7 @@ export function createDemoRuntime({
     },
 
     handleSdkLoadFailure(error) {
+      sdkInteractive = false;
       state.latestAction = 'SDK bootstrap';
       state.latestResult = `MiniAuth SDK did not load: ${formatError(error)}`;
       if (elements.statusConfig) {
@@ -355,11 +375,12 @@ async function handleEmailStart({
   elements,
   renderState,
   sdk,
+  sdkInteractive,
   sectionViews,
   state,
   localStorage,
 }) {
-  if (!sdk) {
+  if (!sdk || !sdkInteractive) {
     renderMissingSdkState({ renderState, state });
     return;
   }
@@ -403,11 +424,12 @@ async function handleEmailVerify({
   elements,
   renderState,
   sdk,
+  sdkInteractive,
   sectionViews,
   state,
   localStorage,
 }) {
-  if (!sdk) {
+  if (!sdk || !sdkInteractive) {
     renderMissingSdkState({ renderState, state });
     return;
   }
@@ -447,10 +469,11 @@ async function handleEmailVerify({
 async function handleRegisterPasskey({
   renderState,
   sdk,
+  sdkInteractive,
   sectionViews,
   state,
 }) {
-  if (!sdk) {
+  if (!sdk || !sdkInteractive) {
     renderMissingSdkState({ renderState, state });
     return;
   }
@@ -476,10 +499,11 @@ async function handleRegisterPasskey({
 async function handleAuthenticatePasskey({
   renderState,
   sdk,
+  sdkInteractive,
   sectionViews,
   state,
 }) {
-  if (!sdk) {
+  if (!sdk || !sdkInteractive) {
     renderMissingSdkState({ renderState, state });
     return;
   }
@@ -505,11 +529,12 @@ async function clearState({
   elements,
   renderState,
   sdk,
+  sdkInteractive,
   sectionViews,
   state,
   localStorage,
 }) {
-  if (!sdk) {
+  if (!sdk || !sdkInteractive) {
     state.latestAction = 'MiniAuth.session.logout()';
     state.latestResult = 'MiniAuth SDK is not ready yet.';
     renderState();
@@ -707,8 +732,18 @@ function setText(root, selector, value) {
 }
 
 function setBackendDisclosureSummary(root, value) {
-  setText(root, '#backend-notes-disclosure-summary', value);
-  setText(root, '#backend-notes-disclosure summary', value);
+  const disclosure = query(root, '#backend-notes-disclosure');
+  const summary =
+    disclosure?.querySelector?.('summary') ||
+    disclosure?.children?.find?.(
+      (child) => child.tagName?.toLowerCase?.() === 'summary',
+    ) ||
+    query(root, '#backend-notes-disclosure summary') ||
+    query(root, '#backend-notes-disclosure-summary');
+
+  if (summary) {
+    summary.textContent = value;
+  }
 }
 
 function query(root, selector) {

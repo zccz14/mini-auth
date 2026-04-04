@@ -117,10 +117,15 @@ describe('demo bootstrap', () => {
     expect(env.document.querySelector('#email-start-button')?.disabled).toBe(
       true,
     );
-    await env.document.querySelector('#email-start-button')!.click();
+    await expect(
+      env.document.querySelector('#email-start-button')!.click(),
+    ).resolves.toBeUndefined();
     expect(
       env.document.querySelector('#latest-response')?.textContent,
     ).toContain('not ready yet');
+    expect(env.document.querySelector('#clear-state-button')?.disabled).toBe(
+      true,
+    );
 
     void startup;
   });
@@ -128,6 +133,10 @@ describe('demo bootstrap', () => {
   it('uses the injected window for fallback sdk url reads', async () => {
     const env = createTestEnvironment('https://docs.example.com/demo/');
     const { bootstrapDemoPage } = await import('../../demo/bootstrap.js');
+    globalThis.window = {
+      location: new URL('https://global.example.com/demo/'),
+      __MINI_AUTH_SDK_URL__: 'https://global.example.com/sdk/singleton-iife.js',
+    };
 
     env.window.__MINI_AUTH_SDK_URL__ =
       'https://injected-window.example.com/sdk/singleton-iife.js';
@@ -136,7 +145,6 @@ describe('demo bootstrap', () => {
       document: env.document,
       history: env.history,
       localStorage: env.localStorage,
-      location: env.location,
       window: env.window,
       loadSdkScript: async () => {
         throw new Error('network down');
@@ -146,6 +154,47 @@ describe('demo bootstrap', () => {
     expect(
       env.document.querySelector('#sdk-script-snippet')?.textContent,
     ).toContain('https://injected-window.example.com/sdk/singleton-iife.js');
+    expect(
+      env.document.querySelector('#origin-command')?.textContent,
+    ).toContain('--origin https://docs.example.com');
+  });
+
+  it('keeps actions disabled until sdk.ready settles', async () => {
+    const env = createTestEnvironment(
+      'https://docs.example.com/demo/?sdk-origin=https://auth.example.com',
+    );
+    const { bootstrapDemoPage } = await import('../../demo/bootstrap.js');
+    const ready = createDeferred();
+    env.window.MiniAuth = createFakeSdk({ ready: ready.promise });
+
+    const startup = bootstrapDemoPage({
+      document: env.document,
+      history: env.history,
+      localStorage: env.localStorage,
+      location: env.location,
+      window: env.window,
+      loadSdkScript: async () => {},
+    });
+
+    expect(env.document.querySelector('#email-start-button')?.disabled).toBe(
+      true,
+    );
+    await expect(
+      env.document.querySelector('#clear-state-button')!.click(),
+    ).resolves.toBeUndefined();
+    expect(
+      env.document.querySelector('#latest-response')?.textContent,
+    ).toContain('not ready yet');
+
+    ready.resolve();
+    await startup;
+
+    expect(env.document.querySelector('#email-start-button')?.disabled).toBe(
+      false,
+    );
+    expect(env.document.querySelector('#clear-state-button')?.disabled).toBe(
+      false,
+    );
   });
 
   it('re-enables actions after sdk attachment', async () => {
@@ -360,6 +409,18 @@ function createStorage() {
     removeItem(key) {
       values.delete(key);
     },
+  };
+}
+
+function createDeferred() {
+  let resolve;
+  const promise = new Promise((nextResolve) => {
+    resolve = nextResolve;
+  });
+
+  return {
+    promise,
+    resolve,
   };
 }
 

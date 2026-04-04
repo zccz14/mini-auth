@@ -132,6 +132,9 @@ describe('demo render helpers', () => {
       root.querySelector('#backend-notes-disclosure summary')?.textContent,
     ).toContain('More');
     expect(
+      root.querySelector('#backend-notes-disclosure')?.children[0]?.textContent,
+    ).toContain('More');
+    expect(
       root.querySelector('#backend-notes-disclosure summary')?.tagName,
     ).toBe('SUMMARY');
     expect(
