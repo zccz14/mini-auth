@@ -11,29 +11,26 @@ const getDemoSetupState = getDemoSetupStateUntyped as (locationLike: {
   currentOrigin: string;
   currentRpId: string;
   suggestedOrigin: string;
-  suggestedRpId: string;
   sdkOrigin: string;
   sdkScriptUrl: string;
   issuer: string;
   jwksUrl: string;
   configStatus: string;
   configError: string;
-  webauthnReady: boolean;
   corsWarning: string;
-  passkeyWarning: string;
   startupCommand: string;
 };
 
 describe('demo WebAuthn setup guidance', () => {
-  it('derives page origin, sdk origin, issuer, jwks, and rp id from allowed inputs', () => {
-    expect(
-      getDemoSetupState({
-        origin: 'https://docs.example.com',
-        protocol: 'https:',
-        hostname: 'docs.example.com',
-        sdkOriginInput: 'https://auth.example.com',
-      }),
-    ).toEqual(
+  it('derives page origin and sdk endpoints from allowed inputs without passkey precheck fields', () => {
+    const state = getDemoSetupState({
+      origin: 'https://docs.example.com',
+      protocol: 'https:',
+      hostname: 'docs.example.com',
+      sdkOriginInput: 'https://auth.example.com',
+    });
+
+    expect(state).toEqual(
       expect.objectContaining({
         currentOrigin: 'https://docs.example.com',
         suggestedOrigin: 'https://docs.example.com',
@@ -41,27 +38,13 @@ describe('demo WebAuthn setup guidance', () => {
         sdkScriptUrl: 'https://auth.example.com/sdk/singleton-iife.js',
         issuer: 'https://auth.example.com',
         jwksUrl: 'https://auth.example.com/jwks',
-        suggestedRpId: 'auth.example.com',
-        webauthnReady: false,
+        startupCommand:
+          'auth-mini start ./auth-mini.sqlite --issuer https://auth.example.com --origin https://docs.example.com',
       }),
     );
-  });
-
-  it('warns when page origin is incompatible with the derived rp id', () => {
-    expect(
-      getDemoSetupState({
-        origin: 'https://docs.example.com',
-        protocol: 'https:',
-        hostname: 'docs.example.com',
-        sdkOriginInput: 'https://auth.example.com',
-      }),
-    ).toEqual(
-      expect.objectContaining({
-        webauthnReady: false,
-        passkeyWarning:
-          'This page origin is not compatible with the suggested RP ID auth.example.com. Open the demo on that domain or a subdomain of it before passkeys will work.',
-      }),
-    );
+    expect(state).not.toHaveProperty('suggestedRpId');
+    expect(state).not.toHaveProperty('webauthnReady');
+    expect(state).not.toHaveProperty('passkeyWarning');
   });
 
   it('rejects sdk-origin values that are not origin-only', () => {
@@ -170,7 +153,7 @@ describe('demo WebAuthn setup guidance', () => {
     );
   });
 
-  it('includes the resolved auth server origin and derived rp id in the startup command', () => {
+  it('includes the resolved auth server origin in the startup command without rp id', () => {
     expect(
       getDemoSetupState({
         origin: 'http://localhost:8080',
@@ -181,7 +164,7 @@ describe('demo WebAuthn setup guidance', () => {
     ).toEqual(
       expect.objectContaining({
         startupCommand:
-          'auth-mini start ./auth-mini.sqlite --issuer http://127.0.0.1:7777 --origin http://localhost:8080 --rp-id 127.0.0.1',
+          'auth-mini start ./auth-mini.sqlite --issuer http://127.0.0.1:7777 --origin http://localhost:8080',
       }),
     );
   });
@@ -197,7 +180,6 @@ describe('demo WebAuthn setup guidance', () => {
     ).toEqual(
       expect.objectContaining({
         configError: expect.stringContaining('sdk-origin must be an origin'),
-        suggestedRpId: '',
         startupCommand: '',
       }),
     );
@@ -214,7 +196,6 @@ describe('demo WebAuthn setup guidance', () => {
       expect.objectContaining({
         configStatus: 'waiting',
         configError: expect.stringContaining('Add ?sdk-origin='),
-        suggestedRpId: '',
         startupCommand: '',
       }),
     );
@@ -230,7 +211,7 @@ describe('demo WebAuthn setup guidance', () => {
     ).not.toHaveProperty('proxyCommand');
   });
 
-  it('rejects IP-address hosts for passkey setup', () => {
+  it('keeps ip-address hosts on the smaller setup contract', () => {
     expect(
       getDemoSetupState({
         origin: 'http://127.0.0.1:8080',
@@ -239,88 +220,11 @@ describe('demo WebAuthn setup guidance', () => {
       }),
     ).toEqual(
       expect.objectContaining({
-        webauthnReady: false,
         suggestedOrigin: 'http://127.0.0.1:8080',
-        suggestedRpId: '',
         configStatus: 'waiting',
         configError: expect.stringContaining('Add ?sdk-origin='),
         corsWarning:
           'Start auth-mini with --origin set to this page origin so the browser can call the auth server cross-origin.',
-        passkeyWarning: '',
-      }),
-    );
-  });
-
-  it('blocks passkey-ready guidance when sdk-origin resolves to an ip host', () => {
-    expect(
-      getDemoSetupState({
-        origin: 'https://docs.example.com',
-        protocol: 'https:',
-        hostname: 'docs.example.com',
-        sdkOriginInput: 'https://127.0.0.1:7777',
-      }),
-    ).toEqual(
-      expect.objectContaining({
-        webauthnReady: false,
-        suggestedRpId: '127.0.0.1',
-        passkeyWarning:
-          'This demo is configured against an IP-address auth server. Passkeys require a domain RP ID, so use a localhost or HTTPS domain sdk-origin instead.',
-      }),
-    );
-  });
-
-  it('rejects https ipv4 hosts for passkey setup and falls back to localhost guidance', () => {
-    expect(
-      getDemoSetupState({
-        origin: 'https://127.0.0.1:8443',
-        protocol: 'https:',
-        hostname: '127.0.0.1',
-      }),
-    ).toEqual(
-      expect.objectContaining({
-        webauthnReady: false,
-        suggestedOrigin: 'https://127.0.0.1:8443',
-        suggestedRpId: '',
-        configStatus: 'waiting',
-        configError: expect.stringContaining('Add ?sdk-origin='),
-        passkeyWarning: '',
-      }),
-    );
-  });
-
-  it('rejects bracketed https ipv6 hosts for passkey setup and falls back to localhost guidance', () => {
-    expect(
-      getDemoSetupState({
-        origin: 'https://[::1]:8443',
-        protocol: 'https:',
-        hostname: '[::1]',
-      }),
-    ).toEqual(
-      expect.objectContaining({
-        webauthnReady: false,
-        suggestedOrigin: 'https://[::1]:8443',
-        suggestedRpId: '',
-        configStatus: 'waiting',
-        configError: expect.stringContaining('Add ?sdk-origin='),
-        passkeyWarning: '',
-      }),
-    );
-  });
-
-  it('accepts localhost for local passkey testing when rp id matches', () => {
-    expect(
-      getDemoSetupState({
-        origin: 'http://localhost:8080',
-        protocol: 'http:',
-        hostname: 'localhost',
-        sdkOriginInput: 'http://localhost:7777',
-      }),
-    ).toEqual(
-      expect.objectContaining({
-        webauthnReady: true,
-        suggestedOrigin: 'http://localhost:8080',
-        suggestedRpId: 'localhost',
-        passkeyWarning: '',
       }),
     );
   });
