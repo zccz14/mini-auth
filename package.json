@@ -1,22 +1,22 @@
 {
   "name": "auth-mini",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Minimal, opinionated auth server for apps that just need auth.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/zccz14/mini-auth.git"
+    "url": "git+https://github.com/zccz14/auth-mini.git"
   },
-  "homepage": "https://github.com/zccz14/mini-auth#readme",
+  "homepage": "https://github.com/zccz14/auth-mini#readme",
   "bugs": {
-    "url": "https://github.com/zccz14/mini-auth/issues"
+    "url": "https://github.com/zccz14/auth-mini/issues"
   },
   "type": "module",
   "files": [
     "dist"
   ],
   "bin": {
-    "mini-auth": "dist/index.js"
+    "auth-mini": "dist/index.js"
   },
   "publishConfig": {
     "access": "public"
