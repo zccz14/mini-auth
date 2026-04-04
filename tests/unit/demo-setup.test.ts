@@ -38,6 +38,23 @@ describe('demo WebAuthn setup guidance', () => {
     );
   });
 
+  it('blocks runtime when sdk-origin is explicitly present but empty', () => {
+    expect(
+      getDemoSetupState({
+        origin: 'https://docs.example.com',
+        protocol: 'https:',
+        hostname: 'docs.example.com',
+        sdkOriginInput: '',
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        configError: expect.stringContaining('sdk-origin must be an origin'),
+        startupCommand: '',
+        sdkOrigin: '',
+      }),
+    );
+  });
+
   it('keeps ?sdk-origin as the only supported external config input', () => {
     const state = getDemoSetupState({
       origin: 'https://mini-auth.example.com',
@@ -136,6 +153,24 @@ describe('demo WebAuthn setup guidance', () => {
           'Start mini-auth with --origin set to this page origin so the browser can call the auth server cross-origin.',
         passkeyWarning:
           'This demo is running on an IP address. Passkeys require a domain RP ID, so open the demo on localhost or an HTTPS domain instead.',
+      }),
+    );
+  });
+
+  it('blocks passkey-ready guidance when sdk-origin resolves to an ip host', () => {
+    expect(
+      getDemoSetupState({
+        origin: 'https://docs.example.com',
+        protocol: 'https:',
+        hostname: 'docs.example.com',
+        sdkOriginInput: 'https://127.0.0.1:7777',
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        webauthnReady: false,
+        suggestedRpId: '127.0.0.1',
+        passkeyWarning:
+          'This demo is configured against an IP-address auth server. Passkeys require a domain RP ID, so use a localhost or HTTPS domain sdk-origin instead.',
       }),
     );
   });

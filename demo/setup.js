@@ -2,23 +2,16 @@ export function getDemoSetupState(locationLike) {
   const origin = locationLike.origin;
   const protocol = locationLike.protocol;
   const hostname = locationLike.hostname;
-  const ipAddressHost = isIpAddressHost(hostname);
-  const webauthnReady =
-    hostname === 'localhost' || (protocol === 'https:' && !ipAddressHost);
-  const fallbackRpId = webauthnReady ? hostname : 'localhost';
-  const corsWarning =
-    'Start mini-auth with --origin set to this page origin so the browser can call the auth server cross-origin.';
-  const passkeyWarning = ipAddressHost
-    ? 'This demo is running on an IP address. Passkeys require a domain RP ID, so open the demo on localhost or an HTTPS domain instead.'
-    : webauthnReady
-      ? ''
-      : 'This demo must run on localhost or an HTTPS domain before passkeys will work.';
-
+  const pageHostIsIpAddress = isIpAddressHost(hostname);
+  const hasExternalSdkOriginInput = Object.hasOwn(
+    locationLike,
+    'sdkOriginInput',
+  );
   const normalizedSdkOrigin = normalizeSdkOrigin(
     locationLike.sdkOriginInput ?? getOriginFromSdkUrl(locationLike.sdkUrl),
   );
 
-  if (!normalizedSdkOrigin.ok && locationLike.sdkOriginInput) {
+  if (!normalizedSdkOrigin.ok && hasExternalSdkOriginInput) {
     return {
       currentOrigin: origin,
       currentRpId: hostname,
@@ -30,13 +23,33 @@ export function getDemoSetupState(locationLike) {
       jwksUrl: '',
       configError: normalizedSdkOrigin.error,
       webauthnReady: false,
-      corsWarning,
-      passkeyWarning,
+      corsWarning:
+        'Start mini-auth with --origin set to this page origin so the browser can call the auth server cross-origin.',
+      passkeyWarning: '',
       startupCommand: '',
     };
   }
 
   const sdkOrigin = normalizedSdkOrigin.ok ? normalizedSdkOrigin.value : '';
+  const sdkOriginHostname = sdkOrigin ? new URL(sdkOrigin).hostname : '';
+  const sdkHostIsIpAddress = sdkOriginHostname
+    ? isIpAddressHost(sdkOriginHostname)
+    : false;
+  const ipAddressHost = pageHostIsIpAddress || sdkHostIsIpAddress;
+  const webauthnReady =
+    !sdkHostIsIpAddress &&
+    (hostname === 'localhost' ||
+      (protocol === 'https:' && !pageHostIsIpAddress));
+  const fallbackRpId = webauthnReady ? hostname : 'localhost';
+  const corsWarning =
+    'Start mini-auth with --origin set to this page origin so the browser can call the auth server cross-origin.';
+  const passkeyWarning = sdkHostIsIpAddress
+    ? 'This demo is configured against an IP-address auth server. Passkeys require a domain RP ID, so use a localhost or HTTPS domain sdk-origin instead.'
+    : pageHostIsIpAddress
+      ? 'This demo is running on an IP address. Passkeys require a domain RP ID, so open the demo on localhost or an HTTPS domain instead.'
+      : webauthnReady
+        ? ''
+        : 'This demo must run on localhost or an HTTPS domain before passkeys will work.';
   const suggestedRpId = sdkOrigin ? new URL(sdkOrigin).hostname : fallbackRpId;
   const issuer = sdkOrigin || '<auth-server-origin>';
 
