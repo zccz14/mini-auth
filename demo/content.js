@@ -134,9 +134,9 @@ export function buildDemoContent(setupState) {
     ],
     backendNotesDisclosureLabel: 'More backend JWT notes',
     deploymentNotes: [
-      `GitHub Pages works as long as the page is served statically and mini-auth is started with --origin ${currentOrigin}.`,
-      'If you use a custom domain, keep the Pages CNAME in place so the browser origin stays stable for WebAuthn and CORS.',
-      'When docs and auth live on different origins, pass ?sdk-origin=https://your-auth-origin and keep --origin pointed at the page URL.',
+      `Publish the static demo directory to GitHub Pages or any other static host, then start mini-auth with --origin ${currentOrigin}.`,
+      'If you attach a custom domain, keep the published Pages CNAME aligned with that domain so the browser origin stays stable for WebAuthn and CORS.',
+      'After moving the page to a new URL, update mini-auth --origin to the new page origin; when docs and auth live on different origins, keep using ?sdk-origin=https://your-auth-origin.',
     ],
     knownIssues: [
       'Passkeys depend on a valid RP ID and a browser environment that supports WebAuthn.',

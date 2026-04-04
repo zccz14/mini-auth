@@ -6,6 +6,10 @@ mini-auth is built for the common case: you want email sign-in, passkeys, JWTs, 
 
 It uses email OTP for first login, discoverable WebAuthn credentials for username-less passkey login, and SQLite for storage. The goal is not to be an auth empire. The goal is to be small, clear, and easy to run.
 
+## Demo / Docs
+
+See `demo/` for the single-page static demo/docs site that doubles as the browser integration guide, API reference, deployment walkthrough, and JWT verification reference.
+
 ## Features
 
 - Email sign-in with one-time passwords
