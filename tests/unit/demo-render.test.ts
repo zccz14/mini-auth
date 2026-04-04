@@ -129,8 +129,11 @@ describe('demo render helpers', () => {
     renderApiReference(root, content.apiReference);
 
     expect(
-      root.querySelector('#backend-notes-disclosure-summary')?.textContent,
+      root.querySelector('#backend-notes-disclosure summary')?.textContent,
     ).toContain('More');
+    expect(
+      root.querySelector('#backend-notes-disclosure summary')?.tagName,
+    ).toBe('SUMMARY');
     expect(
       root.querySelector('#api-reference-list article details summary')
         ?.textContent,
@@ -182,7 +185,13 @@ function createRenderRoot() {
   makeElement('how-it-works-list');
   makeElement('api-reference-list');
   makeElement('backend-notes-list');
-  makeElement('backend-notes-disclosure-summary');
+  const backendNotesDisclosure = createElement(
+    'details',
+    'backend-notes-disclosure',
+  );
+  const backendNotesSummary = createElement('summary');
+  backendNotesDisclosure.appendChild(backendNotesSummary);
+  elements.set('#backend-notes-disclosure', backendNotesDisclosure);
   makeElement('deployment-notes-list');
   makeElement('known-issues-list');
   makeElement('register-output');

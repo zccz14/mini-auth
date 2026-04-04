@@ -19,7 +19,7 @@ export async function bootstrapDemoPage({
   loadSdkScript = defaultLoadSdkScript,
 } = {}) {
   const setupState = getDemoSetupState(
-    readLocationInputs({ document, location }),
+    readLocationInputs({ document, location, windowObject }),
   );
   const content = buildDemoContent(setupState);
 
@@ -55,7 +55,7 @@ export async function bootstrapDemoPage({
   }
 }
 
-function readLocationInputs({ document, location }) {
+function readLocationInputs({ document, location, windowObject }) {
   const url = location instanceof URL ? location : new URL(location.href);
   const sdkOriginInput = url.searchParams.has('sdk-origin')
     ? (url.searchParams.get('sdk-origin') ?? '')
@@ -68,7 +68,7 @@ function readLocationInputs({ document, location }) {
     sdkOriginInput,
     sdkUrl:
       document?.querySelector?.('script[data-mini-auth-sdk]')?.src ||
-      globalThis.window?.__MINI_AUTH_SDK_URL__ ||
+      windowObject?.__MINI_AUTH_SDK_URL__ ||
       DEFAULT_SDK_URL,
   };
 }

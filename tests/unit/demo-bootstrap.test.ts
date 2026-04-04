@@ -99,6 +99,79 @@ describe('demo bootstrap', () => {
     ).toBe('PRE');
   });
 
+  it('keeps actions safe before sdk is attached', async () => {
+    const env = createTestEnvironment(
+      'https://docs.example.com/demo/?sdk-origin=https://auth.example.com',
+    );
+    const { bootstrapDemoPage } = await import('../../demo/bootstrap.js');
+
+    const startup = bootstrapDemoPage({
+      document: env.document,
+      history: env.history,
+      localStorage: env.localStorage,
+      location: env.location,
+      window: env.window,
+      loadSdkScript: () => new Promise(() => {}),
+    });
+
+    expect(env.document.querySelector('#email-start-button')?.disabled).toBe(
+      true,
+    );
+    await env.document.querySelector('#email-start-button')!.click();
+    expect(
+      env.document.querySelector('#latest-response')?.textContent,
+    ).toContain('not ready yet');
+
+    void startup;
+  });
+
+  it('uses the injected window for fallback sdk url reads', async () => {
+    const env = createTestEnvironment('https://docs.example.com/demo/');
+    const { bootstrapDemoPage } = await import('../../demo/bootstrap.js');
+
+    env.window.__MINI_AUTH_SDK_URL__ =
+      'https://injected-window.example.com/sdk/singleton-iife.js';
+
+    await bootstrapDemoPage({
+      document: env.document,
+      history: env.history,
+      localStorage: env.localStorage,
+      location: env.location,
+      window: env.window,
+      loadSdkScript: async () => {
+        throw new Error('network down');
+      },
+    });
+
+    expect(
+      env.document.querySelector('#sdk-script-snippet')?.textContent,
+    ).toContain('https://injected-window.example.com/sdk/singleton-iife.js');
+  });
+
+  it('re-enables actions after sdk attachment', async () => {
+    const env = createTestEnvironment(
+      'https://docs.example.com/demo/?sdk-origin=https://auth.example.com',
+    );
+    const { bootstrapDemoPage } = await import('../../demo/bootstrap.js');
+    env.window.MiniAuth = createFakeSdk();
+
+    await bootstrapDemoPage({
+      document: env.document,
+      history: env.history,
+      localStorage: env.localStorage,
+      location: env.location,
+      window: env.window,
+      loadSdkScript: async () => {},
+    });
+
+    expect(env.document.querySelector('#email-start-button')?.disabled).toBe(
+      false,
+    );
+    expect(env.document.querySelector('#clear-state-button')?.disabled).toBe(
+      false,
+    );
+  });
+
   it('shows a cors-oriented failure message when sdk requests reject after startup', async () => {
     const env = createTestEnvironment(
       'https://docs.example.com/demo/?sdk-origin=https://auth.example.com',
@@ -231,6 +304,7 @@ function createTestEnvironment(urlString, options = {}) {
   const window = {
     MiniAuth: undefined,
     __MINI_AUTH_TEST_HOOKS__: undefined,
+    __MINI_AUTH_SDK_URL__: undefined,
     PublicKeyCredential:
       'publicKeyCredential' in options
         ? options.publicKeyCredential
@@ -401,9 +475,9 @@ function createFakeDocument(options) {
     'backend-notes-list',
     'deployment-notes-list',
     'known-issues-list',
-    'backend-notes-disclosure-summary',
+    'backend-notes-disclosure',
   ]) {
-    const element = createElement('div');
+    const element = createElement(id.includes('list') ? 'ul' : 'div');
     element.id = id;
     if (
       id.includes('button') ||
@@ -420,6 +494,9 @@ function createFakeDocument(options) {
     }
     elements.set(`#${id}`, element);
   }
+
+  const backendNotesSummary = createElement('summary');
+  elements.get('#backend-notes-disclosure').appendChild(backendNotesSummary);
 
   return document;
 

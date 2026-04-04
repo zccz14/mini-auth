@@ -22,11 +22,7 @@ export function renderContentState(root, setupState, content) {
   setList(root, '#backend-notes-list', content.backendNotes || []);
   setList(root, '#deployment-notes-list', content.deploymentNotes || []);
   setList(root, '#known-issues-list', content.knownIssues || []);
-  setText(
-    root,
-    '#backend-notes-disclosure-summary',
-    content.backendNotesDisclosureLabel || '',
-  );
+  setBackendDisclosureSummary(root, content.backendNotesDisclosureLabel || '');
 
   const configError = query(root, '#config-error');
   if (configError) {
@@ -86,6 +82,21 @@ export function disableFlowButtons(root) {
   }
 }
 
+function enableFlowButtons(root) {
+  for (const selector of [
+    '#email-start-button',
+    '#email-verify-button',
+    '#register-button',
+    '#authenticate-button',
+    '#clear-state-button',
+  ]) {
+    const element = query(root, selector);
+    if (element) {
+      element.disabled = false;
+    }
+  }
+}
+
 export async function loadSdkScript(
   setupState,
   { document = globalThis.document } = {},
@@ -139,6 +150,8 @@ export function createDemoRuntime({
     },
 
     wireEvents() {
+      disableFlowButtons(root);
+
       elements.email?.addEventListener('input', () => {
         state.email = elements.email.value.trim();
         persistState(localStorage, state.email);
@@ -193,6 +206,10 @@ export function createDemoRuntime({
 
     attachSdk(nextSdk) {
       sdk = nextSdk || null;
+
+      if (sdk) {
+        enableFlowButtons(root);
+      }
 
       if (sdk?.session?.onChange) {
         sdk.session.onChange(() => renderState());
@@ -342,6 +359,11 @@ async function handleEmailStart({
   state,
   localStorage,
 }) {
+  if (!sdk) {
+    renderMissingSdkState({ renderState, state });
+    return;
+  }
+
   const email = elements.email?.value.trim() || '';
 
   if (!email) {
@@ -385,6 +407,11 @@ async function handleEmailVerify({
   state,
   localStorage,
 }) {
+  if (!sdk) {
+    renderMissingSdkState({ renderState, state });
+    return;
+  }
+
   const email = elements.email?.value.trim() || '';
   const code = elements.otpCode?.value.trim() || '';
 
@@ -423,6 +450,11 @@ async function handleRegisterPasskey({
   sectionViews,
   state,
 }) {
+  if (!sdk) {
+    renderMissingSdkState({ renderState, state });
+    return;
+  }
+
   state.latestAction = 'MiniAuth.webauthn.register()';
   setSectionLoading(sectionViews, 'register', 'Creating passkey...');
   renderState();
@@ -447,6 +479,11 @@ async function handleAuthenticatePasskey({
   sectionViews,
   state,
 }) {
+  if (!sdk) {
+    renderMissingSdkState({ renderState, state });
+    return;
+  }
+
   state.latestAction = 'MiniAuth.webauthn.authenticate()';
   setSectionLoading(sectionViews, 'authenticate', 'Signing in with passkey...');
   renderState();
@@ -472,6 +509,13 @@ async function clearState({
   state,
   localStorage,
 }) {
+  if (!sdk) {
+    state.latestAction = 'MiniAuth.session.logout()';
+    state.latestResult = 'MiniAuth SDK is not ready yet.';
+    renderState();
+    return;
+  }
+
   let logoutError = null;
 
   try {
@@ -662,6 +706,11 @@ function setText(root, selector, value) {
   }
 }
 
+function setBackendDisclosureSummary(root, value) {
+  setText(root, '#backend-notes-disclosure-summary', value);
+  setText(root, '#backend-notes-disclosure summary', value);
+}
+
 function query(root, selector) {
   return root?.querySelector?.(selector) ?? null;
 }
@@ -696,6 +745,12 @@ function formatError(error) {
   }
 
   return String(error);
+}
+
+function renderMissingSdkState({ renderState, state }) {
+  state.latestAction = 'SDK bootstrap';
+  state.latestResult = 'MiniAuth SDK is not ready yet.';
+  renderState();
 }
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {
