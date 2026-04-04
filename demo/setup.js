@@ -11,7 +11,6 @@ export function getDemoSetupState(locationLike) {
   if (!normalizedSdkOrigin.ok) {
     return {
       currentOrigin: origin,
-      currentRpId: hostname,
       suggestedOrigin: origin,
       sdkOrigin: '',
       sdkScriptUrl: '',
@@ -29,7 +28,6 @@ export function getDemoSetupState(locationLike) {
 
   return {
     currentOrigin: origin,
-    currentRpId: hostname,
     suggestedOrigin: origin,
     sdkOrigin,
     sdkScriptUrl: new URL('/sdk/singleton-iife.js', sdkOrigin).toString(),

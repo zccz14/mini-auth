@@ -6,7 +6,6 @@ export function getDemoSetupState(locationLike: {
   sdkUrl?: string;
 }): {
   currentOrigin: string;
-  currentRpId: string;
   suggestedOrigin: string;
   sdkOrigin: string;
   sdkScriptUrl: string;

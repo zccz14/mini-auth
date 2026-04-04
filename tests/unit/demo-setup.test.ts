@@ -9,7 +9,6 @@ const getDemoSetupState = getDemoSetupStateUntyped as (locationLike: {
   sdkUrl?: string;
 }) => {
   currentOrigin: string;
-  currentRpId: string;
   suggestedOrigin: string;
   sdkOrigin: string;
   sdkScriptUrl: string;
@@ -42,6 +41,7 @@ describe('demo WebAuthn setup guidance', () => {
           'auth-mini start ./auth-mini.sqlite --issuer https://auth.example.com --origin https://docs.example.com',
       }),
     );
+    expect(state).not.toHaveProperty('currentRpId');
     expect(state).not.toHaveProperty('suggestedRpId');
     expect(state).not.toHaveProperty('webauthnReady');
     expect(state).not.toHaveProperty('passkeyWarning');
@@ -151,6 +151,13 @@ describe('demo WebAuthn setup guidance', () => {
           'Start auth-mini with --origin set to this page origin so the browser can call the auth server cross-origin.',
       }),
     );
+    expect(
+      getDemoSetupState({
+        origin: 'http://localhost:8080',
+        protocol: 'http:',
+        hostname: 'localhost',
+      }),
+    ).not.toHaveProperty('currentRpId');
   });
 
   it('includes the resolved auth server origin in the startup command without rp id', () => {
