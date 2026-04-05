@@ -6,9 +6,12 @@ import { createMemoryLogCollector, type LogEntry } from './logging.js';
 
 let buildPromise: Promise<void> | null = null;
 
+const npmCommand = resolveShellCommand('npm');
+const npxCommand = resolveShellCommand('npx');
+
 export async function ensureCliIsBuilt(): Promise<void> {
   if (!buildPromise) {
-    buildPromise = runCommand('npm', ['run', 'build']).then((result) => {
+    buildPromise = runCommand(npmCommand, ['run', 'build']).then((result) => {
       if (result.exitCode !== 0) {
         throw new Error(result.stderr || result.stdout || 'CLI build failed');
       }
@@ -23,7 +26,7 @@ export async function runSourceCli(
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const cliEntrypoint = resolve(process.cwd(), 'src/index.ts');
 
-  return runCommand('npx', ['vite-node', cliEntrypoint, ...args]);
+  return runCommand(npxCommand, ['vite-node', cliEntrypoint, ...args]);
 }
 
 export async function runBuiltCli(
@@ -119,4 +122,8 @@ async function runCommand(
       });
     });
   });
+}
+
+function resolveShellCommand(command: 'npm' | 'npx'): string {
+  return process.platform === 'win32' ? `${command}.cmd` : command;
 }

@@ -1,26 +1,39 @@
 import { describe, expect, it } from 'vitest';
+import { createDatabaseClient } from '../../src/infra/db/client.js';
 import { runCli } from '../helpers/cli.js';
-import { createTempDbPath } from '../helpers/db.js';
+import { countRows, createTempDbPath } from '../helpers/db.js';
 
 describe('oclif cli contract', () => {
   it('supports rotate jwks as the primary command', async () => {
     const dbPath = await createTempDbPath();
 
-    await runCli(['create', dbPath]);
+    const createResult = await runCli(['create', dbPath]);
+
+    expect(createResult.exitCode).toBe(0);
+    expect(await countRows(dbPath, 'jwks_keys')).toBe(1);
+    expect(await countActiveKeys(dbPath)).toBe(1);
 
     const result = await runCli(['rotate', 'jwks', dbPath]);
 
     expect(result.exitCode).toBe(0);
+    expect(await countRows(dbPath, 'jwks_keys')).toBe(2);
+    expect(await countActiveKeys(dbPath)).toBe(1);
   }, 15000);
 
   it('keeps rotate-jwks as a compatibility alias', async () => {
     const dbPath = await createTempDbPath();
 
-    await runCli(['create', dbPath]);
+    const createResult = await runCli(['create', dbPath]);
+
+    expect(createResult.exitCode).toBe(0);
+    expect(await countRows(dbPath, 'jwks_keys')).toBe(1);
+    expect(await countActiveKeys(dbPath)).toBe(1);
 
     const result = await runCli(['rotate-jwks', dbPath]);
 
     expect(result.exitCode).toBe(0);
+    expect(await countRows(dbPath, 'jwks_keys')).toBe(2);
+    expect(await countActiveKeys(dbPath)).toBe(1);
   });
 
   it('prints unknown command errors to stderr', async () => {
@@ -57,3 +70,17 @@ describe('oclif cli contract', () => {
     expect(result.stdout).toContain('USAGE');
   });
 });
+
+async function countActiveKeys(dbPath: string): Promise<number> {
+  const db = createDatabaseClient(dbPath);
+
+  try {
+    const row = db
+      .prepare('SELECT COUNT(*) AS count FROM jwks_keys WHERE is_active = 1')
+      .get() as { count: number };
+
+    return row.count;
+  } finally {
+    db.close();
+  }
+}
