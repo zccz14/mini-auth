@@ -122,7 +122,9 @@ Rotate JWKS keys:
 npx auth-mini rotate jwks ./auth-mini.sqlite
 ```
 
-Compatibility note: `rotate-jwks` remains available as a transition-release alias.
+By default, CLI errors stay concise; use `--verbose` for detailed diagnostics.
+
+`rotate-jwks` remains available only as a transition/compatibility alias during the migration release.
 
 ## Logging
 

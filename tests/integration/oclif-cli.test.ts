@@ -107,11 +107,16 @@ describe('oclif cli contract', () => {
     expect(result.stdout).toContain('USAGE');
   });
 
-  it('documents rotate jwks as the primary command in README', async () => {
+  it('documents rotate jwks migration semantics in README', async () => {
     const readme = await readFile(resolve(process.cwd(), 'README.md'), 'utf8');
 
     expect(readme).toContain('auth-mini rotate jwks ./auth-mini.sqlite');
-    expect(readme).toContain('rotate-jwks');
+    expect(readme).toContain(
+      'By default, CLI errors stay concise; use `--verbose` for detailed diagnostics.',
+    );
+    expect(readme).toContain(
+      '`rotate-jwks` remains available only as a transition/compatibility alias during the migration release.',
+    );
   });
 
   it('prints concise command errors by default', async () => {
