@@ -51,6 +51,11 @@ async function loadRunStartCommand() {
   return module.runStartCommand;
 }
 
+async function loadStartCommandModule() {
+  vi.resetModules();
+  return import('../../src/commands/start.ts');
+}
+
 describe('runStartCommand', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -145,6 +150,52 @@ describe('runStartCommand', () => {
     );
 
     await server.close();
+  });
+});
+
+describe('createStartLifecycle', () => {
+  it('registers SIGINT and SIGTERM handlers', async () => {
+    const on = vi.fn();
+    const off = vi.fn();
+    const { createStartLifecycle } = await loadStartCommandModule();
+
+    createStartLifecycle({ close: vi.fn(), on, off });
+
+    expect(on).toHaveBeenCalledWith('SIGINT', expect.any(Function));
+    expect(on).toHaveBeenCalledWith('SIGTERM', expect.any(Function));
+  });
+
+  it('closes the server only once when shutdown signals repeat', async () => {
+    const close = vi.fn().mockResolvedValue(undefined);
+    const on = vi.fn();
+    const off = vi.fn();
+    const { createStartLifecycle } = await loadStartCommandModule();
+
+    createStartLifecycle({ close, on, off });
+    const shutdown = on.mock.calls[0]?.[1] as (() => Promise<void>) | undefined;
+
+    await shutdown?.();
+    await shutdown?.();
+
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('removes listeners after shutdown and forwards close errors', async () => {
+    const error = new Error('close failed');
+    const close = vi.fn().mockRejectedValue(error);
+    const on = vi.fn();
+    const off = vi.fn();
+    const onCloseError = vi.fn();
+    const { createStartLifecycle } = await loadStartCommandModule();
+
+    createStartLifecycle({ close, on, off, onCloseError });
+    const shutdown = on.mock.calls[0]?.[1] as (() => Promise<void>) | undefined;
+
+    await shutdown?.();
+
+    expect(off).toHaveBeenCalledWith('SIGINT', shutdown);
+    expect(off).toHaveBeenCalledWith('SIGTERM', shutdown);
+    expect(onCloseError).toHaveBeenCalledWith(error);
   });
 });
 

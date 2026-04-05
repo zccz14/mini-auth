@@ -1,6 +1,10 @@
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
+import { createServer } from 'node:net';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createDatabaseClient } from '../../src/infra/db/client.js';
-import { runBuiltCli, runPackedCli } from '../helpers/cli.js';
+import { ensureCliIsBuilt, runBuiltCli, runPackedCli } from '../helpers/cli.js';
 import { countRows, createTempDbPath } from '../helpers/db.js';
 
 describe('oclif cli contract', () => {
@@ -101,6 +105,61 @@ describe('oclif cli contract', () => {
     expect(result.stderr).toBe('');
     expect(result.stdout).toContain('USAGE');
   });
+
+  it('keeps start alive until shutdown signal arrives', async () => {
+    await ensureCliIsBuilt();
+    const dbPath = await createTempDbPath();
+    const port = await reservePort();
+    const cliEntrypoint = resolve(process.cwd(), 'dist/index.js');
+    const createResult = await runBuiltCli(['create', dbPath]);
+
+    expect(createResult.exitCode).toBe(0);
+
+    const child = spawn(
+      process.execPath,
+      [
+        cliEntrypoint,
+        'start',
+        dbPath,
+        '--host',
+        '127.0.0.1',
+        '--port',
+        String(port),
+        '--issuer',
+        'https://issuer.example',
+        '--rp-id',
+        'app.example',
+        '--origin',
+        'https://app.example',
+      ],
+      {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+
+    await waitFor(() => stdout.includes('server.listening'));
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 200));
+
+    expect(child.exitCode).toBeNull();
+
+    child.kill('SIGTERM');
+
+    const [code] = (await once(child, 'close')) as [number | null];
+
+    expect(code).toBe(0);
+    expect(stderr).toBe('');
+    expect(stdout).toContain('server.shutdown.completed');
+  }, 15000);
 });
 
 async function countActiveKeys(dbPath: string): Promise<number> {
@@ -115,4 +174,60 @@ async function countActiveKeys(dbPath: string): Promise<number> {
   } finally {
     db.close();
   }
+}
+
+async function waitFor(
+  predicate: () => boolean,
+  timeoutMs = 5000,
+): Promise<void> {
+  const start = Date.now();
+
+  while (!predicate()) {
+    if (Date.now() - start > timeoutMs) {
+      throw new Error('Timed out waiting for CLI output');
+    }
+
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 25));
+  }
+}
+
+async function reservePort(): Promise<number> {
+  const server = createServer();
+
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      server.off('error', reject);
+      resolve();
+    });
+  });
+
+  const address = server.address();
+
+  if (!address || typeof address === 'string') {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve();
+      });
+    });
+    throw new Error('Failed to reserve test port');
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    });
+  });
+
+  return address.port;
 }
