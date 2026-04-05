@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -104,6 +105,13 @@ describe('oclif cli contract', () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('');
     expect(result.stdout).toContain('USAGE');
+  });
+
+  it('documents rotate jwks as the primary command in README', async () => {
+    const readme = await readFile(resolve(process.cwd(), 'README.md'), 'utf8');
+
+    expect(readme).toContain('auth-mini rotate jwks ./auth-mini.sqlite');
+    expect(readme).toContain('rotate-jwks');
   });
 
   it('prints concise command errors by default', async () => {

@@ -119,8 +119,10 @@ npx auth-mini start ./auth-mini.sqlite \
 Rotate JWKS keys:
 
 ```bash
-npx auth-mini rotate-jwks ./auth-mini.sqlite
+npx auth-mini rotate jwks ./auth-mini.sqlite
 ```
+
+Compatibility note: `rotate-jwks` remains available as a transition-release alias.
 
 ## Logging
 
