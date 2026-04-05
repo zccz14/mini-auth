@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createDatabaseClient } from '../../src/infra/db/client.js';
-import { ensureCliIsBuilt, runCli } from '../helpers/cli.js';
+import { ensureCliIsBuilt, runBuiltCli, runCli } from '../helpers/cli.js';
 import { countRows, createTempDbPath } from '../helpers/db.js';
 import { exists } from '../helpers/fs.js';
 
@@ -55,7 +55,7 @@ describe('workspace bootstrap', () => {
 
     expect(await exists('dist/index.js')).toBe(true);
 
-    const result = await runCli(['--help']);
+    const result = await runBuiltCli(['--help']);
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('');
