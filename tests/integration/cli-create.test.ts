@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createDatabaseClient } from '../../src/infra/db/client.js';
-import { ensureCliIsBuilt, runBuiltCli } from '../helpers/cli.js';
+import { ensureCliIsBuilt, runCli } from '../helpers/cli.js';
 import { countRows, createTempDbPath } from '../helpers/db.js';
 import { exists } from '../helpers/fs.js';
 
@@ -55,7 +55,7 @@ describe('workspace bootstrap', () => {
 
     expect(await exists('dist/index.js')).toBe(true);
 
-    const result = await runBuiltCli(['--help']);
+    const result = await runCli(['--help']);
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('');
@@ -67,7 +67,7 @@ describe('workspace bootstrap', () => {
     await ensureCliIsBuilt();
     const dbPath = await createTempDbPath();
 
-    const result = await runBuiltCli(['create', dbPath]);
+    const result = await runCli(['create', dbPath]);
 
     expect(result.exitCode).toBe(0);
     expect(await countRows(dbPath, 'jwks_keys')).toBe(1);
@@ -108,7 +108,7 @@ describe('workspace bootstrap', () => {
       'utf8',
     );
 
-    const result = await runBuiltCli([
+    const result = await runCli([
       'create',
       dbPath,
       '--smtp-config',
@@ -160,7 +160,7 @@ describe('workspace bootstrap', () => {
 
     await writeFile(smtpJsonPath, '{"host":"broken"}', 'utf8');
 
-    const result = await runBuiltCli([
+    const result = await runCli([
       'create',
       dbPath,
       '--smtp-config',
@@ -198,7 +198,7 @@ describe('workspace bootstrap', () => {
       'utf8',
     );
 
-    const result = await runBuiltCli([
+    const result = await runCli([
       'create',
       dbPath,
       '--smtp-config',
@@ -214,8 +214,8 @@ describe('workspace bootstrap', () => {
     await ensureCliIsBuilt();
     const dbPath = await createTempDbPath();
 
-    const createResult = await runBuiltCli(['create', dbPath]);
-    const rotateResult = await runBuiltCli(['rotate-jwks', dbPath]);
+    const createResult = await runCli(['create', dbPath]);
+    const rotateResult = await runCli(['rotate-jwks', dbPath]);
 
     expect(createResult.exitCode).toBe(0);
     expect(rotateResult.exitCode).toBe(0);
