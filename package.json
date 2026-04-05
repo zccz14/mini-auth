@@ -18,6 +18,11 @@
   "bin": {
     "auth-mini": "dist/index.js"
   },
+  "oclif": {
+    "bin": "auth-mini",
+    "commands": "./dist/commands",
+    "topicSeparator": " "
+  },
   "publishConfig": {
     "access": "public"
   },
@@ -31,12 +36,14 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@oclif/core": "^4.8.0",
     "@simplewebauthn/server": "^13.0.0",
+    "auth-mini": "file:auth-mini-0.1.1.tgz",
     "better-sqlite3": "^12.4.1",
-    "cac": "^6.7.14",
     "cbor-x": "^1.6.4",
     "hono": "^4.10.2",
     "nodemailer": "^8.0.4",
+    "oclif": "^4.22.0",
     "pino": "^10.3.1",
     "zod": "^4.1.11"
   },

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createDatabaseClient } from '../../src/infra/db/client.js';
-import { ensureCliIsBuilt, runBuiltCli, runCli } from '../helpers/cli.js';
+import { ensureCliIsBuilt, runBuiltCli } from '../helpers/cli.js';
 import { countRows, createTempDbPath } from '../helpers/db.js';
 import { exists } from '../helpers/fs.js';
 
@@ -60,14 +60,14 @@ describe('workspace bootstrap', () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('');
     expect(result.stdout).toContain('auth-mini');
-    expect(result.stdout).toContain('--help');
-  });
+    expect(result.stdout).toContain('USAGE');
+  }, 30000);
 
   it('create initializes schema and seeds an active jwks key', async () => {
     await ensureCliIsBuilt();
     const dbPath = await createTempDbPath();
 
-    const result = await runCli(['create', dbPath]);
+    const result = await runBuiltCli(['create', dbPath]);
 
     expect(result.exitCode).toBe(0);
     expect(await countRows(dbPath, 'jwks_keys')).toBe(1);
@@ -86,7 +86,7 @@ describe('workspace bootstrap', () => {
     } finally {
       db.close();
     }
-  });
+  }, 30000);
 
   it('create imports valid smtp json', async () => {
     await ensureCliIsBuilt();
@@ -108,7 +108,7 @@ describe('workspace bootstrap', () => {
       'utf8',
     );
 
-    const result = await runCli([
+    const result = await runBuiltCli([
       'create',
       dbPath,
       '--smtp-config',
@@ -150,7 +150,7 @@ describe('workspace bootstrap', () => {
     } finally {
       db.close();
     }
-  });
+  }, 30000);
 
   it('create rejects invalid smtp json and imports nothing', async () => {
     await ensureCliIsBuilt();
@@ -160,7 +160,7 @@ describe('workspace bootstrap', () => {
 
     await writeFile(smtpJsonPath, '{"host":"broken"}', 'utf8');
 
-    const result = await runCli([
+    const result = await runBuiltCli([
       'create',
       dbPath,
       '--smtp-config',
@@ -170,7 +170,7 @@ describe('workspace bootstrap', () => {
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('Invalid SMTP config');
     expect(await countRows(dbPath, 'smtp_configs')).toBe(0);
-  });
+  }, 30000);
 
   it('create rejects smtp rows missing host, port, username, password, or from_email', async () => {
     await ensureCliIsBuilt();
@@ -198,7 +198,7 @@ describe('workspace bootstrap', () => {
       'utf8',
     );
 
-    const result = await runCli([
+    const result = await runBuiltCli([
       'create',
       dbPath,
       '--smtp-config',
@@ -208,14 +208,14 @@ describe('workspace bootstrap', () => {
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('Invalid SMTP config');
     expect(await countRows(dbPath, 'smtp_configs')).toBe(0);
-  });
+  }, 30000);
 
   it('rotate-jwks generates a new active key and keeps older keys', async () => {
     await ensureCliIsBuilt();
     const dbPath = await createTempDbPath();
 
-    const createResult = await runCli(['create', dbPath]);
-    const rotateResult = await runCli(['rotate-jwks', dbPath]);
+    const createResult = await runBuiltCli(['create', dbPath]);
+    const rotateResult = await runBuiltCli(['rotate-jwks', dbPath]);
 
     expect(createResult.exitCode).toBe(0);
     expect(rotateResult.exitCode).toBe(0);
@@ -232,7 +232,7 @@ describe('workspace bootstrap', () => {
     } finally {
       db.close();
     }
-  });
+  }, 30000);
 
   it('creates all v1 tables', async () => {
     const { bootstrapDatabase } =
