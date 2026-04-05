@@ -1,7 +1,7 @@
 import { Args, Flags } from '@oclif/core';
 import { normalizeOriginOption } from '../app/commands/options.js';
 import { runStartCommand } from '../app/commands/start.js';
-import { BaseCommand } from './base.js';
+import { BaseCommand } from '../oclif/base-command.js';
 
 export default class StartCommand extends BaseCommand {
   static summary = 'Start the auth-mini server';

@@ -1,6 +1,6 @@
 import { Args, Flags } from '@oclif/core';
 import { runCreateCommand } from '../app/commands/create.js';
-import { BaseCommand } from './base.js';
+import { BaseCommand } from '../oclif/base-command.js';
 
 export default class CreateCommand extends BaseCommand {
   static summary = 'Create a new auth-mini database';

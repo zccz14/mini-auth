@@ -13,11 +13,16 @@ const npxCommand = resolveShellCommand('npx');
 
 export async function ensureCliIsBuilt(): Promise<void> {
   if (!buildPromise) {
-    buildPromise = runCommand(npmCommand, ['run', 'build']).then((result) => {
-      if (result.exitCode !== 0) {
-        throw new Error(result.stderr || result.stdout || 'CLI build failed');
-      }
-    });
+    buildPromise = rm(resolve(process.cwd(), 'dist'), {
+      force: true,
+      recursive: true,
+    })
+      .then(() => runCommand(npmCommand, ['run', 'build']))
+      .then((result) => {
+        if (result.exitCode !== 0) {
+          throw new Error(result.stderr || result.stdout || 'CLI build failed');
+        }
+      });
   }
 
   await buildPromise;

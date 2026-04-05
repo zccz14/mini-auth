@@ -12,6 +12,7 @@ describe('workspace bootstrap', () => {
     const { default: pkg } = await import('../../package.json');
 
     expect(pkg.bin['auth-mini']).toBe('dist/index.js');
+    expect(pkg.dependencies['auth-mini']).toBeUndefined();
   });
 
   it('defines build, test, lint, format, and typecheck scripts', async () => {
@@ -61,6 +62,7 @@ describe('workspace bootstrap', () => {
     expect(result.stderr).toBe('');
     expect(result.stdout).toContain('auth-mini');
     expect(result.stdout).toContain('USAGE');
+    expect(result.stdout).not.toContain('\n  base\n');
   }, 30000);
 
   it('create initializes schema and seeds an active jwks key', async () => {

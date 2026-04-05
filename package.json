@@ -38,7 +38,6 @@
   "dependencies": {
     "@oclif/core": "^4.8.0",
     "@simplewebauthn/server": "^13.0.0",
-    "auth-mini": "file:auth-mini-0.1.1.tgz",
     "better-sqlite3": "^12.4.1",
     "cbor-x": "^1.6.4",
     "hono": "^4.10.2",

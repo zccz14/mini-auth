@@ -1,6 +1,6 @@
 import { Args } from '@oclif/core';
 import { runRotateJwksCommand } from '../../app/commands/rotate-jwks.js';
-import { BaseCommand } from '../base.js';
+import { BaseCommand } from '../../oclif/base-command.js';
 
 export default class RotateJwksCommand extends BaseCommand {
   static summary = 'Rotate the active JWKS signing key';
