@@ -1,6 +1,6 @@
 import { Args, Flags } from '@oclif/core';
 import { runCreateCommand } from '../app/commands/create.js';
-import { BaseCommand } from '../oclif/base-command.js';
+import { BaseCommand, withCliErrorMetadata } from '../oclif/base-command.js';
 
 export default class CreateCommand extends BaseCommand {
   static summary = 'Create a new auth-mini database';
@@ -21,9 +21,18 @@ export default class CreateCommand extends BaseCommand {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(CreateCommand);
 
-    await runCreateCommand({
-      dbPath: args.dbPath,
-      smtpConfig: flags['smtp-config'],
-    });
+    try {
+      await runCreateCommand({
+        dbPath: args.dbPath,
+        smtpConfig: flags['smtp-config'],
+      });
+    } catch (error) {
+      throw withCliErrorMetadata(error, {
+        hint: flags['smtp-config']
+          ? 'Check that --smtp-config points to a readable JSON file.'
+          : undefined,
+        see: 'auth-mini create --help',
+      });
+    }
   }
 }

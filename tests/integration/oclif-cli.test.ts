@@ -106,6 +106,37 @@ describe('oclif cli contract', () => {
     expect(result.stdout).toContain('USAGE');
   });
 
+  it('prints concise command errors by default', async () => {
+    const result = await runBuiltCli([
+      'create',
+      '/tmp/db.sqlite',
+      '--smtp-config',
+      './missing.json',
+    ]);
+
+    expect(result.exitCode).toBeGreaterThan(0);
+    expect(result.stderr).toContain('Error:');
+    expect(result.stderr).toContain('Hint:');
+    expect(result.stderr).toContain('See:');
+    expect(result.stderr).not.toContain('Stack:');
+  });
+
+  it('prints detailed diagnostics with --verbose', async () => {
+    const result = await runBuiltCli([
+      'create',
+      '/tmp/db.sqlite',
+      '--smtp-config',
+      './missing.json',
+      '--verbose',
+    ]);
+
+    expect(result.exitCode).toBeGreaterThan(0);
+    expect(result.stderr).toContain('Error:');
+    expect(result.stderr).toContain('Hint:');
+    expect(result.stderr).toContain('See:');
+    expect(result.stderr).toContain('Stack:');
+  });
+
   it('keeps start alive until shutdown signal arrives', async () => {
     await ensureCliIsBuilt();
     const dbPath = await createTempDbPath();
